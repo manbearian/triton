@@ -58,6 +58,7 @@ private:
 //===----------------------------------------------------------------------===//
 // Shared Memory Alias Analysis
 //===----------------------------------------------------------------------===//
+#if NOT_COMPATIBLE_WITH_LATEST_LLLVM
 class SharedMemoryAliasAnalysis : public ForwardDataFlowAnalysis<AliasInfo> {
 public:
   using ForwardDataFlowAnalysis<AliasInfo>::ForwardDataFlowAnalysis;
@@ -74,6 +75,16 @@ public:
   visitOperation(Operation *op,
                  ArrayRef<LatticeElement<AliasInfo> *> operands) override;
 };
+#else
+struct SharedMemoryAliasAnalysis {
+  SharedMemoryAliasAnalysis(mlir::MLIRContext *) {}
+  void run(mlir::Operation *) { assert(false && "DISABLED DUE TO COMPAT!!!"); }
+  struct A { ArrayRef<Value> getAllocs() const { return {}; } };
+  struct dummy { A a; A &getValue() { return a; } };
+  dummy *lookupLatticeElement(mlir::Value) { return nullptr; }
+
+};
+#endif
 
 } // namespace mlir
 

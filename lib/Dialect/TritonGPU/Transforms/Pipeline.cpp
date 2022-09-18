@@ -279,11 +279,11 @@ void LoopPipeliner::emitPrologue() {
         if (auto loadOp = llvm::dyn_cast<triton::LoadOp>(op)) {
           newOp = builder.create<triton::gpu::InsertSliceAsyncOp>(
               op->getLoc(), loadsBuffer[loadOp].getType(),
-              lookupOrDefault(loadOp.ptr(), stage),
+              lookupOrDefault(loadOp.getPtr(), stage),
               loadStageBuffer[loadOp][stage], pipelineIterIdx,
-              lookupOrDefault(loadOp.mask(), stage),
-              lookupOrDefault(loadOp.other(), stage), loadOp.cache(),
-              loadOp.evict(), loadOp.isVolatile(), /*axis*/ 0);
+              lookupOrDefault(loadOp.getMask(), stage),
+              lookupOrDefault(loadOp.getOther(), stage), loadOp.getCache(),
+              loadOp.getEvict(), loadOp.getIsVolatile(), /*axis*/ 0);
           loadStageBuffer[loadOp].push_back(newOp->getResult(0));
         } else
           llvm_unreachable("This should be LoadOp");
@@ -473,7 +473,7 @@ scf::ForOp LoopPipeliner::createNewForOp() {
     // update loading mask
     if (loads.contains(op->getResult(0))) {
       auto loadOp = llvm::cast<triton::LoadOp>(op);
-      Value mask = loadOp.mask();
+      Value mask = loadOp.getMask();
       if (mask) {
         Value splatCond = builder.create<triton::SplatOp>(
             mask.getLoc(), mask.getType(), nextLoopCond);
@@ -486,11 +486,11 @@ scf::ForOp LoopPipeliner::createNewForOp() {
       }
       Value insertAsyncOp = builder.create<triton::gpu::InsertSliceAsyncOp>(
           op->getLoc(), loadsBuffer[loadOp].getType(),
-          nextMapping.lookupOrDefault(loadOp.ptr()),
+          nextMapping.lookupOrDefault(loadOp.getPtr()),
           newForOp.getRegionIterArgs()[bufferIdx + nextBuffers.size()],
-          insertSliceIndex, nextMapping.lookupOrDefault(loadOp.mask()),
-          nextMapping.lookupOrDefault(loadOp.other()), loadOp.cache(),
-          loadOp.evict(), loadOp.isVolatile(), /*axis*/ 0);
+          insertSliceIndex, nextMapping.lookupOrDefault(loadOp.getMask()),
+          nextMapping.lookupOrDefault(loadOp.getOther()), loadOp.getCache(),
+          loadOp.getEvict(), loadOp.getIsVolatile(), /*axis*/ 0);
       nextBuffers.push_back(insertAsyncOp);
       nextOp = builder.create<triton::gpu::ExtractSliceOp>(
           op->getLoc(), loadsMapping[loadOp].getType(), insertAsyncOp,

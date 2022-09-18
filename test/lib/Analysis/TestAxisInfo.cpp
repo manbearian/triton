@@ -6,10 +6,9 @@ using namespace mlir;
 namespace {
 
 struct TestAxisInfoPass
-    : public PassWrapper<TestAxisInfoPass, OperationPass<FuncOp>> {
+    : public PassWrapper<TestAxisInfoPass, OperationPass<func::FuncOp>> {
 
-  // LLVM15+
-  // MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestAlignmentPass);
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestAxisInfoPass);
 
   void print(const std::string &name, raw_ostream &os, ArrayRef<int> vals) {
     os << name << ": [";
@@ -39,8 +38,7 @@ struct TestAxisInfoPass
         // std::ostringstream oss;
         // result.print(oss);
         // os << " => ";
-        LatticeElement<AxisInfo> *latticeElement =
-            analysis.lookupLatticeElement(result);
+        auto latticeElement = analysis.lookupLatticeElement(result);
         if (!latticeElement) {
           os << "None\n";
           return;

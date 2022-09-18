@@ -1,7 +1,7 @@
 #include "triton/Analysis/Membar.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
-#include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 
 namespace mlir {
 

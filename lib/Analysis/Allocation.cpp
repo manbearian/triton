@@ -77,9 +77,7 @@ private:
   }
 
   void getValueAlias(Value value, SharedMemoryAliasAnalysis &analysis) {
-    LatticeElement<AliasInfo> *latticeElement =
-        analysis.lookupLatticeElement(value);
-    if (latticeElement) {
+    if (auto latticeElement = analysis.lookupLatticeElement(value)) {
       auto &info = latticeElement->getValue();
       if (!info.getAllocs().empty()) {
         for (auto alloc : info.getAllocs()) {

@@ -41,7 +41,7 @@ AxisInfo AxisInfo::getPessimisticValueState(Value value) {
   int divHint = 1;
   if (BlockArgument blockArg = value.dyn_cast<BlockArgument>()) {
     Operation *op = blockArg.getOwner()->getParentOp();
-    if (FuncOp fun = dyn_cast<FuncOp>(op)) {
+    if (auto fun = dyn_cast<func::FuncOp>(op)) {
       Attribute attr =
           fun.getArgAttr(blockArg.getArgNumber(), "tt.divisibility");
       if (attr)
@@ -68,6 +68,7 @@ AxisInfo AxisInfo::join(const AxisInfo &lhs, const AxisInfo &rhs) {
   return AxisInfo(retContiguity, retDivisibility, retConstancy);
 }
 
+#if NOT_COMPATIBLE_WITH_LATEST_LLLVM
 //===----------------------------------------------------------------------===//
 // AxisInfoAnalysis
 //===----------------------------------------------------------------------===//
@@ -179,9 +180,9 @@ ChangeResult AxisInfoAnalysis::visitOperation(
     AxisInfo::DimVectorT contiguity = opInfo.getContiguity();
     AxisInfo::DimVectorT divisibility = opInfo.getDivisibility();
     AxisInfo::DimVectorT constancy = opInfo.getConstancy();
-    contiguity.insert(contiguity.begin() + expandDims.axis(), 1);
-    divisibility.insert(divisibility.begin() + expandDims.axis(), 1);
-    constancy.insert(constancy.begin() + expandDims.axis(), 1);
+    contiguity.insert(contiguity.begin() + expandDims.getAxis(), 1);
+    divisibility.insert(divisibility.begin() + expandDims.getAxis(), 1);
+    constancy.insert(constancy.begin() + expandDims.getAxis(), 1);
     curr = AxisInfo(contiguity, divisibility, constancy);
   }
   // Broadcast
@@ -213,5 +214,6 @@ ChangeResult AxisInfoAnalysis::visitOperation(
   }
   return result;
 }
+#endif
 
 } // namespace mlir

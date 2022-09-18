@@ -7,7 +7,7 @@
 #C = #triton_gpu.mma<{version = 2, warpsPerCTA = [4, 1]}>
 
 // CHECK-LABEL: matmul_loop
-func @matmul_loop(%lb : index, %ub : index, %step : index, %A : !tt.ptr<f16>, %B : !tt.ptr<f16>) {
+func.func @matmul_loop(%lb : index, %ub : index, %step : index, %A : !tt.ptr<f16>, %B : !tt.ptr<f16>) {
   %a_ptr_init = tt.broadcast %A : (!tt.ptr<f16>) -> tensor<128x32x!tt.ptr<f16>, #AL>
   %b_ptr_init = tt.broadcast %B : (!tt.ptr<f16>) -> tensor<32x128x!tt.ptr<f16>, #BL>
 
@@ -36,7 +36,7 @@ func @matmul_loop(%lb : index, %ub : index, %step : index, %A : !tt.ptr<f16>, %B
 }
 
 // CHECK-LABEL: raw_single_block
-func @raw_single_block(%A : !tt.ptr<f16>) {
+func.func @raw_single_block(%A : !tt.ptr<f16>) {
   %cst1 = arith.constant dense<true> : tensor<128x32xi1, #AL>
   %cst2 = arith.constant dense<0.000000e+00> : tensor<128x32xf16, #AL>
   %a_ptr = tt.broadcast %A : (!tt.ptr<f16>) -> tensor<128x32x!tt.ptr<f16>, #AL>
@@ -48,7 +48,7 @@ func @raw_single_block(%A : !tt.ptr<f16>) {
 }
 
 // CHECK-LABEL: war_single_block
-func @war_single_block(%A : !tt.ptr<f16>) {
+func.func @war_single_block(%A : !tt.ptr<f16>) {
   %cst1 = arith.constant dense<true> : tensor<128x32xi1, #AL>
   %cst2 = arith.constant dense<0.000000e+00> : tensor<128x32xf16, #AL>
   %a_ptr = tt.broadcast %A : (!tt.ptr<f16>) -> tensor<128x32x!tt.ptr<f16>, #AL>
@@ -64,7 +64,7 @@ func @war_single_block(%A : !tt.ptr<f16>) {
 }
 
 // CHECK-LABEL: scratch
-func @scratch() {
+func.func @scratch() {
   %cst0 = arith.constant dense<0.000000e+00> : tensor<16x16xf16, #A>
   // CHECK: Membar 1
   %a = tt.cat %cst0, %cst0 {axis = 0} : (tensor<16x16xf16, #A>, tensor<16x16xf16, #A>) -> tensor<32x16xf16, #A>
@@ -74,7 +74,7 @@ func @scratch() {
 }
 
 // CHECK-LABEL: async_wait
-func @async_wait() {
+func.func @async_wait() {
   %cst0 = arith.constant dense<0.000000e+00> : tensor<16x16xf16, #A>
   // CHECK: Membar 1
   %a = tt.cat %cst0, %cst0 {axis = 0} : (tensor<16x16xf16, #A>, tensor<16x16xf16, #A>) -> tensor<32x16xf16, #A>
@@ -85,7 +85,7 @@ func @async_wait() {
 }
 
 // CHECK-LABEL: alloc
-func @alloc() {
+func.func @alloc() {
   %cst0 = triton_gpu.alloc_tensor : tensor<16x16xf16, #A>
   %a = tt.cat %cst0, %cst0 {axis = 0} : (tensor<16x16xf16, #A>, tensor<16x16xf16, #A>) -> tensor<32x16xf16, #A>
   // CHECK: Membar 2
@@ -94,7 +94,7 @@ func @alloc() {
 }
 
 // CHECK-LABEL: extract_slice
-func @extract_slice() {
+func.func @extract_slice() {
   %cst0 = arith.constant dense<0.000000e+00> : tensor<1x16x16xf16, #A>
   %index = arith.constant 0 : i32
   %cst1 = triton_gpu.extract_slice %cst0, %index { axis = 0 : i32 } : tensor<1x16x16xf16, #A> -> tensor<16x16xf16, #A>
@@ -106,7 +106,7 @@ func @extract_slice() {
 }
 
 // CHECK-LABEL: insert_slice_async
-func @insert_slice_async(%A : !tt.ptr<f16>, %i1 : i1) {
+func.func @insert_slice_async(%A : !tt.ptr<f16>, %i1 : i1) {
   %a_ptr = tt.broadcast %A : (!tt.ptr<f16>) -> tensor<16x16x!tt.ptr<f16>, #AL>
   %mask = tt.splat %i1 : (i1) -> tensor<16x16xi1, #AL>
   %other = arith.constant dense<0.000000e+00> : tensor<16x16xf16, #AL>
@@ -121,7 +121,7 @@ func @insert_slice_async(%A : !tt.ptr<f16>, %i1 : i1) {
 
 // If branch inserted a barrier for %cst0 and %cst1, but else didn't, then the barrier should be inserted in the parent region
 // CHECK-LABEL: multi_blocks
-func @multi_blocks(%i1 : i1) {
+func.func @multi_blocks(%i1 : i1) {
   %cst0 = arith.constant dense<0.000000e+00> : tensor<16x16xf16, #A>
   %cst1 = arith.constant dense<0.000000e+00> : tensor<16x16xf16, #A>
   scf.if %i1 {
@@ -142,7 +142,7 @@ func @multi_blocks(%i1 : i1) {
 
 // Both branches inserted a barrier for %cst0 and %cst1, then the barrier doesn't need to be inserted in the parent region
 // CHECK-LABEL: multi_blocks_join_barrier
-func @multi_blocks_join_barrier(%i1 : i1) {
+func.func @multi_blocks_join_barrier(%i1 : i1) {
   %cst0 = arith.constant dense<0.000000e+00> : tensor<16x16xf16, #A>
   %cst1 = arith.constant dense<0.000000e+00> : tensor<16x16xf16, #A>
   scf.if %i1 {
@@ -160,7 +160,7 @@ func @multi_blocks_join_barrier(%i1 : i1) {
 
 // Read yielded tensor requires a barrier
 // CHECK-LABEL: multi_blocks_yield
-func @multi_blocks_yield(%i1 : i1) {
+func.func @multi_blocks_yield(%i1 : i1) {
   %cst0 = arith.constant dense<0.000000e+00> : tensor<16x16xf16, #A>
   %cst1 = arith.constant dense<0.000000e+00> : tensor<16x16xf16, #A>
   %a = scf.if %i1 -> (tensor<32x16xf16, #A>) {
@@ -180,7 +180,7 @@ func @multi_blocks_yield(%i1 : i1) {
 
 // Conservatively add a barrier as if the branch (%i1) is never taken
 // CHECK-LABEL: multi_blocks_noelse
-func @multi_blocks_noelse(%i1 : i1) {
+func.func @multi_blocks_noelse(%i1 : i1) {
   %cst0 = arith.constant dense<0.000000e+00> : tensor<16x16xf16, #A>
   %cst1 = arith.constant dense<0.000000e+00> : tensor<16x16xf16, #A>
   scf.if %i1 {
@@ -194,7 +194,7 @@ func @multi_blocks_noelse(%i1 : i1) {
 
 // Conservatively add a barrier as if the branch (%i2) is never taken
 // CHECK-LABEL: multi_blocks_nested_scf
-func @multi_blocks_nested_scf(%i1 : i1, %i2 : i1) {
+func.func @multi_blocks_nested_scf(%i1 : i1, %i2 : i1) {
   %cst0 = arith.constant dense<0.000000e+00> : tensor<16x16xf16, #A>
   %cst1 = arith.constant dense<0.000000e+00> : tensor<16x16xf16, #A>
   scf.if %i1 {
@@ -215,7 +215,7 @@ func @multi_blocks_nested_scf(%i1 : i1, %i2 : i1) {
 }
 
 // CHECK-LABEL: for
-func @for(%lb : index, %ub : index, %step : index, %A : !tt.ptr<f16>, %B : !tt.ptr<f16>) {
+func.func @for(%lb : index, %ub : index, %step : index, %A : !tt.ptr<f16>, %B : !tt.ptr<f16>) {
   %a_shared_init = arith.constant dense<0.00e+00> : tensor<128x32xf16, #A>
   %b_shared_init = arith.constant dense<0.00e+00> : tensor<128x32xf16, #A>
   %c_shared_init = arith.constant dense<0.00e+00> : tensor<128x32xf16, #A>
@@ -230,7 +230,7 @@ func @for(%lb : index, %ub : index, %step : index, %A : !tt.ptr<f16>, %B : !tt.p
 // Although a_shared and b_shared are synced before entering the loop,
 // they are reassociated with aliases (c_shared) and thus require a barrier.
 // CHECK-LABEL: for_alias
-func @for_alias(%lb : index, %ub : index, %step : index, %A : !tt.ptr<f16>, %B : !tt.ptr<f16>) {
+func.func @for_alias(%lb : index, %ub : index, %step : index, %A : !tt.ptr<f16>, %B : !tt.ptr<f16>) {
   %a_shared_init = arith.constant dense<0.00e+00> : tensor<128x32xf16, #A>
   %b_shared_init = arith.constant dense<0.00e+00> : tensor<128x32xf16, #A>
   // CHECK-NEXT: Membar 2

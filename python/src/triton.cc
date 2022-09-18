@@ -820,7 +820,7 @@ void init_triton_ir(py::module &&m) {
              return str;
            })
       .def("push_back",
-           [](mlir::ModuleOp &self, mlir::FuncOp &funcOp) -> void {
+           [](mlir::ModuleOp &self, mlir::func::FuncOp &funcOp) -> void {
              self.push_back(funcOp);
            })
       .def("has_function",
@@ -830,32 +830,32 @@ void init_triton_ir(py::module &&m) {
              return false;
            })
       .def("get_function",
-           [](mlir::ModuleOp &self, std::string &funcName) -> mlir::FuncOp {
-             return self.lookupSymbol<mlir::FuncOp>(funcName);
+           [](mlir::ModuleOp &self, std::string &funcName) -> mlir::func::FuncOp {
+             return self.lookupSymbol<mlir::func::FuncOp>(funcName);
            });
 
-  py::class_<mlir::FuncOp, mlir::OpState>(m, "function")
+  py::class_<mlir::func::FuncOp, mlir::OpState>(m, "function")
       // .def_property_readonly("attrs", &ir::function::attrs)
       // .def("add_attr", &ir::function::add_attr);
       .def("args",
-           [](mlir::FuncOp &self, unsigned idx) -> mlir::BlockArgument {
+           [](mlir::func::FuncOp &self, unsigned idx) -> mlir::BlockArgument {
              return self.getArgument(idx);
            })
       .def(
           "add_entry_block",
-          [](mlir::FuncOp &self) -> mlir::Block * {
+          [](mlir::func::FuncOp &self) -> mlir::Block * {
             return self.addEntryBlock();
           },
           ret::reference)
       .def(
           "set_arg_attr",
-          [](mlir::FuncOp &self, int arg_no, const std::string &name, int val) {
+          [](mlir::func::FuncOp &self, int arg_no, const std::string &name, int val) {
             // set arg attributes "name" to value "val"
             auto attrTy = mlir::IntegerType::get(self.getContext(), 32);
             self.setArgAttr(arg_no, name, mlir::IntegerAttr::get(attrTy, val));
           },
           ret::reference)
-      .def("reset_type", &mlir::FuncOp::setType);
+      .def("reset_type", &mlir::func::FuncOp::setType);
 
   py::class_<mlir::OpBuilder::InsertPoint>(m, "InsertPoint");
 
@@ -872,13 +872,13 @@ void init_triton_ir(py::module &&m) {
       .def("ret",
            [](mlir::OpBuilder &self, std::vector<mlir::Value> &vals) -> void {
              auto loc = self.getUnknownLoc();
-             self.create<mlir::ReturnOp>(loc, vals);
+             self.create<mlir::func::ReturnOp>(loc, vals);
            })
       .def("call",
-           [](mlir::OpBuilder &self, mlir::FuncOp &func,
+           [](mlir::OpBuilder &self, mlir::func::FuncOp &func,
               std::vector<mlir::Value> &args) -> mlir::OpState {
              auto loc = self.getUnknownLoc();
-             return self.create<mlir::CallOp>(loc, func, args);
+             return self.create<mlir::func::CallOp>(loc, func, args);
            })
       // insertion block/point
       .def("set_insertion_point_to_start",
@@ -1005,22 +1005,22 @@ void init_triton_ir(py::module &&m) {
       // Ops
       .def("create_function",
            [](mlir::OpBuilder &self, std::string name,
-              mlir::Type &funcType) -> mlir::FuncOp {
+              mlir::Type &funcType) -> mlir::func::FuncOp {
              // TODO: loc
              auto loc = self.getUnknownLoc();
              if (auto funcTy = funcType.dyn_cast<mlir::FunctionType>()) {
-               return self.create<mlir::FuncOp>(loc, name, funcTy);
+               return self.create<mlir::func::FuncOp>(loc, name, funcTy);
              }
              throw std::runtime_error("invalid function type");
            })
       .def("get_or_insert_function",
            [](mlir::OpBuilder &self, mlir::ModuleOp &module,
-              std::string &funcName, mlir::Type &funcType) -> mlir::FuncOp {
+              std::string &funcName, mlir::Type &funcType) -> mlir::func::FuncOp {
              if (mlir::Operation *funcOperation = module.lookupSymbol(funcName))
-               return llvm::dyn_cast<mlir::FuncOp>(funcOperation);
+               return llvm::dyn_cast<mlir::func::FuncOp>(funcOperation);
              auto loc = self.getUnknownLoc();
              if (auto funcTy = funcType.dyn_cast<mlir::FunctionType>()) {
-               return self.create<mlir::FuncOp>(loc, funcName, funcTy);
+               return self.create<mlir::func::FuncOp>(loc, funcName, funcTy);
              }
              throw std::runtime_error("invalid function type");
            })
@@ -1147,8 +1147,8 @@ void init_triton_ir(py::module &&m) {
       .def("create_to_index",
            [](mlir::OpBuilder &self, mlir::Value &input) -> mlir::Value {
              auto loc = self.getUnknownLoc();
-             return self.create<mlir::arith::IndexCastOp>(loc, input,
-                                                          self.getIndexType());
+             return self.create<mlir::arith::IndexCastOp>(
+                 loc, self.getIndexType(), input);
            })
 
       .def("create_fmul",
@@ -1615,8 +1615,8 @@ void init_triton_ir(py::module &&m) {
            [](mlir::OpBuilder &self, mlir::Value &condition,
               mlir::Value &trueValue, mlir::Value &falseValue) -> mlir::Value {
              auto loc = self.getUnknownLoc();
-             return self.create<mlir::SelectOp>(loc, condition, trueValue,
-                                                falseValue);
+             return self.create<mlir::arith::SelectOp>(loc, condition,
+                                                       trueValue, falseValue);
            })
       // // Intrinsics
       // // These have no place in the IR, and hopefully they can be removed at

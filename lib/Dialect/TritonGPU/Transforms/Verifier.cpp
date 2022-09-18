@@ -21,10 +21,10 @@ public:
 private:
   LogicalResult verifySingleOp(Operation *op) {
     if (auto dotOp = llvm::dyn_cast<triton::DotOp>(op)) {
-      Type aType = dotOp.a().getType();
-      Type bType = dotOp.b().getType();
-      Type cType = dotOp.c().getType();
-      Type dType = dotOp.d().getType();
+      Type aType = dotOp.getA().getType();
+      Type bType = dotOp.getB().getType();
+      Type cType = dotOp.getC().getType();
+      Type dType = dotOp.getD().getType();
       for (auto it : llvm::zip(llvm::SmallVector<Type>{aType, bType},
                                llvm::SmallVector<char>{'a', 'b'})) {
         Type type = std::get<0>(it);

@@ -108,6 +108,7 @@ private:
   int rank;
 };
 
+#if NOT_COMPATIBLE_WITH_LATEST_LLLVM
 class AxisInfoAnalysis : public ForwardDataFlowAnalysis<AxisInfo> {
 
 private:
@@ -132,6 +133,15 @@ public:
   visitOperation(Operation *op,
                  ArrayRef<LatticeElement<AxisInfo> *> operands) override;
 };
+#else
+struct AxisInfoAnalysis {
+  AxisInfoAnalysis(mlir::MLIRContext *) {}
+  void run(mlir::Operation *) { assert(false && "DISABLED DUE TO COMPAT!!!"); }
+  struct dummy { AxisInfo p; AxisInfo &getValue() { return p; } };
+  dummy *lookupLatticeElement(mlir::Value) { return nullptr; }
+
+};
+#endif
 
 } // namespace mlir
 

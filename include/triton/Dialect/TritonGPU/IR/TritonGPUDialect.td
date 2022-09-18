@@ -28,8 +28,8 @@ def TritonGPU_Dialect : Dialect {
       return mod->getAttr("triton_gpu.num-warps").cast<IntegerAttr>().getInt();
     }
   }];
-  
 
+  let useDefaultAttributePrinterParser = 1;
 }
 
 #endif

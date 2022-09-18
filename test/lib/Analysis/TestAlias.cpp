@@ -9,10 +9,10 @@ using namespace mlir;
 namespace {
 
 struct TestAliasPass
-    : public PassWrapper<TestAliasPass, OperationPass<FuncOp>> {
+    : public PassWrapper<TestAliasPass, OperationPass<func::FuncOp>> {
 
-  // LLVM15+
-  // MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestAliasPass);
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestAliasPass);
+
   static void print(StringRef name, SmallVector<std::string, 4> &vals,
                     raw_ostream &os) {
     if (vals.empty())
@@ -45,8 +45,7 @@ struct TestAliasPass
     AsmState state(operation->getParentOfType<ModuleOp>());
     // Get operation ids of value's aliases
     auto getAllocOpNames = [&](Value value) {
-      LatticeElement<AliasInfo> *latticeElement =
-          analysis.lookupLatticeElement(value);
+      auto *latticeElement = analysis.lookupLatticeElement(value);
       SmallVector<std::string, 4> opNames;
       if (latticeElement) {
         auto &info = latticeElement->getValue();

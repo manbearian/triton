@@ -1,6 +1,6 @@
 // RUN: triton-opt %s -split-input-file -convert-triton-to-tritongpu=num-warps=2 -convert-triton-gpu-to-llvm | FileCheck %s
 
-func @test_splat(%ptr: !tt.ptr<f32>) {
+func.func @test_splat(%ptr: !tt.ptr<f32>) {
   // Here, 128 elements, 64(2*32) threads, so each need to process 2 elements
   //
   // CHECK: %0 = llvm.bitcast %arg0 : !llvm.ptr<f32, 1> to !llvm.ptr<f32, 1>
@@ -21,7 +21,7 @@ func @test_splat(%ptr: !tt.ptr<f32>) {
 
 // -----
 
-func @test_store_splat(%ptr: !tt.ptr<f32>) {
+func.func @test_store_splat(%ptr: !tt.ptr<f32>) {
   %ptrs = tt.splat %ptr : (!tt.ptr<f32>) -> tensor<128x!tt.ptr<f32>>
   %a = arith.constant 1.0 : f32
   %true = arith.constant 1 : i1

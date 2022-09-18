@@ -1,11 +1,10 @@
-// RUN: triton-opt %s -split-input-file -canonicalize -triton-combine
 // RUN: triton-opt %s -split-input-file -canonicalize -triton-combine | FileCheck %s
 
 // CHECK-LABEL: @test_combine_dot_add_pattern
-func @test_combine_dot_add_pattern() -> (tensor<128x128xf32>, tensor<128x128xf32>) {
-    // CHECK: %[[d:.*]] = arith.constant dense<3.000000e+00> : tensor<128x128xf32>
-    // CHECK: %[[b:.*]] = arith.constant dense<2.000000e+00> : tensor<128x128xf32>
+func.func @test_combine_dot_add_pattern() -> (tensor<128x128xf32>, tensor<128x128xf32>) {
     // CHECK: %[[a:.*]] = arith.constant dense<1.000000e+00> : tensor<128x128xf32>
+    // CHECK: %[[b:.*]] = arith.constant dense<2.000000e+00> : tensor<128x128xf32>
+    // CHECK: %[[d:.*]] = arith.constant dense<3.000000e+00> : tensor<128x128xf32>
     %a = arith.constant dense<1.0> : tensor<128x128xf32>
     %b = arith.constant dense<2.0> : tensor<128x128xf32>
     %zero = arith.constant dense<0.0> : tensor<128x128xf32>
@@ -23,7 +22,7 @@ func @test_combine_dot_add_pattern() -> (tensor<128x128xf32>, tensor<128x128xf32
 }
 
 // CHECK-LABEL: @test_combine_addptr_pattern
-func @test_combine_addptr_pattern(%base: !tt.ptr<f32>) -> tensor<8x!tt.ptr<f32>> {
+func.func @test_combine_addptr_pattern(%base: !tt.ptr<f32>) -> tensor<8x!tt.ptr<f32>> {
     %off0 = arith.constant 10 : i32
     %off1 = arith.constant 15 : i32
 
@@ -45,24 +44,24 @@ func @test_combine_addptr_pattern(%base: !tt.ptr<f32>) -> tensor<8x!tt.ptr<f32>>
 }
 
 // CHECK-LABEL: @test_combine_select_masked_load_pattern
-func @test_combine_select_masked_load_pattern(%ptr: tensor<8x!tt.ptr<f32>>, %cond: i1) -> (tensor<8xf32>, tensor<8xf32>) {
+func.func @test_combine_select_masked_load_pattern(%ptr: tensor<8x!tt.ptr<f32>>, %cond: i1) -> (tensor<8xf32>, tensor<8xf32>) {
     %mask = tt.broadcast %cond : (i1) -> tensor<8xi1>
     %false_val = arith.constant dense<0.0> : tensor<8xf32>
 
     // CHECK: %[[res1:.*]] = tt.load %{{.*}}, %{{.*}}, %{{.*}} {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<8xf32>
     %x = tt.load %ptr, %mask, %false_val {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<8xf32>
-    %0 = select %cond, %x, %false_val : tensor<8xf32>
+    %0 = arith.select %cond, %x, %false_val : tensor<8xf32>
 
     // CHECK: %[[res2:.*]] = tt.load %{{.*}}, %{{.*}}, %{{.*}} {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<8xf32>
     %y = tt.load %ptr, %mask, %false_val {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<8xf32>
-    %1 = select %cond, %y, %false_val : tensor<8xf32>
+    %1 = arith.select %cond, %y, %false_val : tensor<8xf32>
 
     // CHECK: return %[[res1]], %[[res2]] : tensor<8xf32>, tensor<8xf32>
     return %0, %1 : tensor<8xf32>, tensor<8xf32>
 }
 
 // CHECK-LABEL: @test_combine_broadcast_constant_pattern
-func @test_combine_broadcast_constant_pattern(%cst : f32) -> tensor<8x2xf32> {
+func.func @test_combine_broadcast_constant_pattern(%cst : f32) -> tensor<8x2xf32> {
     // CHECK: %[[cst:.*]] = arith.constant dense<1.000000e+00> : tensor<8x2xf32>
     %const = arith.constant dense<1.0> : tensor<8xf32>
     %bst_out = tt.broadcast %const : (tensor<8xf32>) -> tensor<8x2xf32>
@@ -72,7 +71,7 @@ func @test_combine_broadcast_constant_pattern(%cst : f32) -> tensor<8x2xf32> {
 }
 
 // CHECK-LABEL: @test_canonicalize_masked_load_pattern
-func @test_canonicalize_masked_load_pattern(%ptr: tensor<8x!tt.ptr<f32>>) -> (tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) {
+func.func @test_canonicalize_masked_load_pattern(%ptr: tensor<8x!tt.ptr<f32>>) -> (tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) {
     %true_mask = arith.constant dense<true> : tensor<8xi1>
     %false_mask = arith.constant dense<false> : tensor<8xi1>
     %other_val = arith.constant dense<0.0> : tensor<8xf32>
@@ -93,7 +92,7 @@ func @test_canonicalize_masked_load_pattern(%ptr: tensor<8x!tt.ptr<f32>>) -> (te
 }
 
 // CHECK-LABEL: @test_canonicalize_masked_store_pattern
-func @test_canonicalize_masked_store_pattern(%ptr: tensor<8x!tt.ptr<f32>>, %val: tensor<8xf32>) {
+func.func @test_canonicalize_masked_store_pattern(%ptr: tensor<8x!tt.ptr<f32>>, %val: tensor<8xf32>) {
     %true_mask = arith.constant dense<true> : tensor<8xi1>
     %false_mask = arith.constant dense<false> : tensor<8xi1>
 

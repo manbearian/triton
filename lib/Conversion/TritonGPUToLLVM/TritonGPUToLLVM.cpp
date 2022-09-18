@@ -7,7 +7,7 @@
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -77,21 +77,22 @@ static auto wrapAsStructAttrs(OpBuilder &b, ArrayAttr attrs) {
       b.getContext(), b.getNamedAttr(LLVM::getStructAttrsAttrName(), attrs));
 }
 
-struct FuncOpConversionBase : public ConvertOpToLLVMPattern<FuncOp> {
+struct FuncOpConversionBase : public ConvertOpToLLVMPattern<func::FuncOp> {
 protected:
-  using ConvertOpToLLVMPattern<FuncOp>::ConvertOpToLLVMPattern;
+  using ConvertOpToLLVMPattern<func::FuncOp>::ConvertOpToLLVMPattern;
 
-  // Convert input FuncOp to LLVMFuncOp by using the LLVMTypeConverter provided
+  // Convert input func::FuncOp to LLVMFuncOp by using the LLVMTypeConverter provided
   // to this legalization pattern.
   LLVM::LLVMFuncOp
-  convertFuncOpToLLVMFuncOp(FuncOp funcOp,
+  convertFuncOpToLLVMFuncOp(func::FuncOp funcOp,
                             ConversionPatternRewriter &rewriter) const {
     // Convert the original function arguments. They are converted using the
     // LLVMTypeConverter provided to this legalization pattern.
     auto varargsAttr = funcOp->getAttrOfType<BoolAttr>("func.varargs");
     TypeConverter::SignatureConversion result(funcOp.getNumArguments());
     auto llvmType = getTypeConverter()->convertFunctionSignature(
-        funcOp.getType(), varargsAttr && varargsAttr.getValue(), result);
+        funcOp.getFunctionType(), varargsAttr && varargsAttr.getValue(),
+        result);
     if (!llvmType)
       return nullptr;
 
@@ -143,9 +144,10 @@ protected:
       }
       linkage = attr.getLinkage();
     }
+
     auto newFuncOp = rewriter.create<LLVM::LLVMFuncOp>(
         funcOp.getLoc(), funcOp.getName(), llvmType, linkage,
-        /*dsoLocal*/ false, attributes);
+        /*dsoLocal*/ false, LLVM::CConv::C, attributes);
     rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
                                 newFuncOp.end());
     if (failed(rewriter.convertRegionTypes(&newFuncOp.getBody(), *typeConverter,
@@ -166,7 +168,7 @@ struct FuncOpConversion : public FuncOpConversionBase {
       : FuncOpConversionBase(converter, benefit), NumWarps(numWarps) {}
 
   LogicalResult
-  matchAndRewrite(FuncOp funcOp, OpAdaptor adaptor,
+  matchAndRewrite(func::FuncOp funcOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto newFuncOp = convertFuncOpToLLVMFuncOp(funcOp, rewriter);
     if (!newFuncOp)
@@ -192,11 +194,11 @@ private:
   int NumWarps{0};
 };
 
-struct ReturnOpConversion : public ConvertOpToLLVMPattern<::mlir::ReturnOp> {
-  using ConvertOpToLLVMPattern<ReturnOp>::ConvertOpToLLVMPattern;
+struct ReturnOpConversion : public ConvertOpToLLVMPattern<func::ReturnOp> {
+  using ConvertOpToLLVMPattern<func::ReturnOp>::ConvertOpToLLVMPattern;
 
   LogicalResult
-  matchAndRewrite(ReturnOp op, OpAdaptor adaptor,
+  matchAndRewrite(func::ReturnOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
     unsigned numArguments = op.getNumOperands();
@@ -264,7 +266,7 @@ Value getStructFromElements(Location loc, ValueRange resultVals,
   for (auto v : llvm::enumerate(resultVals)) {
     llvmStruct = rewriter.create<LLVM::InsertValueOp>(
         loc, structType, llvmStruct, v.value(),
-        rewriter.getI64ArrayAttr(v.index()));
+        rewriter.getDenseI64ArrayAttr(v.index()));
   }
   return llvmStruct;
 }
@@ -317,7 +319,7 @@ struct ConvertTritonGPUOpToLLVMPatternBase {
       Type type =
           llvmStruct.getType().cast<LLVM::LLVMStructType>().getBody()[i];
       results[i] = rewriter.create<LLVM::ExtractValueOp>(
-          loc, type, llvmStruct, rewriter.getI64ArrayAttr(i));
+          loc, type, llvmStruct, rewriter.getDenseI64ArrayAttr(i));
     }
     return results;
   }
@@ -513,7 +515,7 @@ struct SplatOpConversion
   matchAndRewrite(triton::SplatOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
-    auto src = adaptor.src();
+    auto src = adaptor.getSrc();
     auto llStruct = convertSplatLikeOp(src.getType(), op.getType(), src,
                                        getTypeConverter(), rewriter, loc);
     rewriter.replaceOp(op, {llStruct});
@@ -660,13 +662,13 @@ struct StoreOpConversion
   LogicalResult
   matchAndRewrite(triton::StoreOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Value ptr = op.ptr();
-    Value mask = op.mask();
-    Value value = op.value();
+    Value ptr = op.getPtr();
+    Value mask = op.getMask();
+    Value value = op.getValue();
 
-    Value llPtr = adaptor.ptr();
-    Value llMask = adaptor.mask();
-    Value llValue = adaptor.value();
+    Value llPtr = adaptor.getPtr();
+    Value llMask = adaptor.getMask();
+    Value llValue = adaptor.getValue();
 
     auto loc = op->getLoc();
     MLIRContext *ctx = rewriter.getContext();
@@ -808,9 +810,9 @@ struct BroadcastOpConversion
   matchAndRewrite(triton::BroadcastOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
-    Value src = adaptor.src();
-    Value result = op.result();
-    auto srcTy = op.src().getType().cast<RankedTensorType>();
+    Value src = adaptor.getSrc();
+    Value result = op.getResult();
+    auto srcTy = op.getSrc().getType().cast<RankedTensorType>();
     auto resultTy = result.getType().cast<RankedTensorType>();
     auto srcLayout = srcTy.getEncoding().dyn_cast<BlockedEncodingAttr>();
     auto resultLayout = resultTy.getEncoding().dyn_cast<BlockedEncodingAttr>();
@@ -880,7 +882,7 @@ struct ViewOpConversion
   matchAndRewrite(triton::ViewOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     // We cannot directly
-    //   rewriter.replaceOp(op, adaptor.src());
+    //   rewriter.replaceOp(op, adaptor.getSrc());
     // due to MLIR's restrictions
     Location loc = op->getLoc();
     auto resultTy = op.getType().cast<RankedTensorType>();
@@ -891,7 +893,7 @@ struct ViewOpConversion
         this->getTypeConverter()->convertType(resultTy.getElementType());
     SmallVector<Type> types(elems, elemTy);
     Type structTy = LLVM::LLVMStructType::getLiteral(getContext(), types);
-    auto vals = getElementsFromStruct(loc, adaptor.src(), elems, rewriter);
+    auto vals = getElementsFromStruct(loc, adaptor.getSrc(), elems, rewriter);
     Value view = getStructFromElements(loc, vals, rewriter, structTy);
     rewriter.replaceOp(op, view);
     return success();
@@ -909,13 +911,13 @@ struct MakeRangeOpConversion
   matchAndRewrite(triton::MakeRangeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
-    auto rankedTy = op.result().getType().dyn_cast<RankedTensorType>();
+    auto rankedTy = op.getResult().getType().dyn_cast<RankedTensorType>();
     auto shape = rankedTy.getShape();
     auto layout = rankedTy.getEncoding().cast<BlockedEncodingAttr>();
 
     auto elemTy = rankedTy.getElementType();
     assert(elemTy.isInteger(32));
-    Value start = createIndexAttrConstant(rewriter, loc, elemTy, op.start());
+    Value start = createIndexAttrConstant(rewriter, loc, elemTy, op.getStart());
     auto idxs = emitIndicesForBlockedLayout(loc, rewriter, layout, shape);
     unsigned elems = idxs.size();
     SmallVector<Value> retVals(elems);
@@ -947,13 +949,13 @@ struct LoadOpConversion
   matchAndRewrite(triton::LoadOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    Value ptr = op.ptr();
-    Value mask = op.mask();
-    Value other = op.other();
+    Value ptr = op.getPtr();
+    Value mask = op.getMask();
+    Value other = op.getOther();
 
-    Value llPtr = adaptor.ptr();
-    Value llMask = adaptor.mask();
-    Value llOther = adaptor.other();
+    Value llPtr = adaptor.getPtr();
+    Value llMask = adaptor.getMask();
+    Value llOther = adaptor.getOther();
 
     auto loc = op->getLoc();
     MLIRContext *ctx = rewriter.getContext();
@@ -992,7 +994,7 @@ struct LoadOpConversion
     DenseElementsAttr constAttr;
     int64_t splatVal = 0;
     if (valueElemTy.isa<IntegerType>() &&
-        matchPattern(op.other(), m_Constant(&constAttr)) &&
+        matchPattern(op.getOther(), m_Constant(&constAttr)) &&
         constAttr.isSplat()) {
       otherIsSplatConstInt = true;
       splatVal = constAttr.getSplatValue<APInt>().getSExtValue();
@@ -1045,13 +1047,13 @@ struct LoadOpConversion
           ptxBuilder.newAddrOperand(ptrElems[vecStart], "l", in_off);
 
       // Define the instruction opcode
-      ld.o("volatile", op.isVolatile())
+      ld.o("volatile", op.getIsVolatile())
           .global()
-          .o("ca", op.cache() == triton::CacheModifier::CA)
-          .o("cg", op.cache() == triton::CacheModifier::CG)
+          .o("ca", op.getCache() == triton::CacheModifier::CA)
+          .o("cg", op.getCache() == triton::CacheModifier::CG)
           .o("L1::evict_first",
-             op.evict() == triton::EvictionPolicy::EVICT_FIRST)
-          .o("L1::evict_last", op.evict() == triton::EvictionPolicy::EVICT_LAST)
+             op.getEvict() == triton::EvictionPolicy::EVICT_FIRST)
+          .o("L1::evict_last", op.getEvict() == triton::EvictionPolicy::EVICT_LAST)
           .o("L1::cache_hint", hasL2EvictPolicy)
           .v(nWords)
           .b(width);
@@ -1128,7 +1130,7 @@ struct LoadOpConversion
         if (retTy.isa<LLVM::LLVMStructType>()) {
           curr = rewriter.create<LLVM::ExtractValueOp>(
               loc, IntegerType::get(getContext(), width), ret,
-              rewriter.getI64ArrayAttr(ii));
+              rewriter.getDenseI64ArrayAttr(ii));
         } else {
           curr = ret;
         }
@@ -1190,9 +1192,9 @@ struct AddPtrOpConversion
         this->getTypeConverter()->convertType(resultTy.getElementType());
     SmallVector<Type> types(elems, elemTy);
     Type structTy = LLVM::LLVMStructType::getLiteral(getContext(), types);
-    auto ptrs = getElementsFromStruct(loc, adaptor.ptr(), elems, rewriter);
+    auto ptrs = getElementsFromStruct(loc, adaptor.getPtr(), elems, rewriter);
     auto offsets =
-        getElementsFromStruct(loc, adaptor.offset(), elems, rewriter);
+        getElementsFromStruct(loc, adaptor.getOffset(), elems, rewriter);
     SmallVector<Value> resultVals(elems);
     for (unsigned i = 0; i < elems; ++i) {
       resultVals[i] =

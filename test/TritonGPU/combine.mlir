@@ -8,7 +8,7 @@
 // CHECK: [[col_layout:#.*]] = #triton_gpu.blocked<{sizePerThread = [4, 1], threadsPerWarp = [16, 2], warpsPerCTA = [4, 1], order = [0, 1]}>
 // CHECK: [[col_layout_novec:#.*]] = #triton_gpu.blocked<{sizePerThread = [1, 1], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
 
-func @cst() -> tensor<1024xi32, #layout1> {
+func.func @cst() -> tensor<1024xi32, #layout1> {
   %cst = arith.constant dense<0> : tensor<1024xi32, #layout0>
   %1 = triton_gpu.convert_layout %cst : (tensor<1024xi32, #layout0>) -> tensor<1024xi32, #layout1>
   // CHECK-NOT: triton_gpu.convert_layout
@@ -16,7 +16,7 @@ func @cst() -> tensor<1024xi32, #layout1> {
   return %1: tensor<1024xi32, #layout1>
 }
 
-func @range() -> tensor<1024xi32, #layout1> {
+func.func @range() -> tensor<1024xi32, #layout1> {
   %0 = tt.make_range {end = 1024 : i32, start = 0 : i32} : tensor<1024xi32, #layout0>
   %1 = triton_gpu.convert_layout %0 : (tensor<1024xi32, #layout0>) -> tensor<1024xi32, #layout1>
   // CHECK-NOT: triton_gpu.convert_layout
@@ -24,7 +24,7 @@ func @range() -> tensor<1024xi32, #layout1> {
   return %1: tensor<1024xi32, #layout1>
 }
 
-func @splat(%arg0: i32) -> tensor<1024xi32, #layout1> {
+func.func @splat(%arg0: i32) -> tensor<1024xi32, #layout1> {
   %0 = tt.splat %arg0 : (i32) -> tensor<1024xi32, #layout0>
   %1 = triton_gpu.convert_layout %0 : (tensor<1024xi32, #layout0>) -> tensor<1024xi32, #layout1>
   // CHECK-NOT: triton_gpu.convert_layout
@@ -32,7 +32,7 @@ func @splat(%arg0: i32) -> tensor<1024xi32, #layout1> {
   return %1: tensor<1024xi32, #layout1>
 }
 
-func @remat(%arg0: i32) -> tensor<1024xi32, #layout1> {
+func.func @remat(%arg0: i32) -> tensor<1024xi32, #layout1> {
   %0 = tt.make_range {end = 1024 : i32, start = 0 : i32} : tensor<1024xi32, #layout0>
   %1 = tt.make_range {end = 1024 : i32, start = 0 : i32} : tensor<1024xi32, #layout0>
   %2 = arith.muli %0, %1 : tensor<1024xi32, #layout0>
@@ -58,7 +58,7 @@ func @remat(%arg0: i32) -> tensor<1024xi32, #layout1> {
 #blocked4 = #triton_gpu.blocked<{sizePerThread = [4, 1], threadsPerWarp = [16, 2], warpsPerCTA = [4, 1], order = [0, 1]}>
 
 // CHECK-LABEL: transpose
-func @transpose(%arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %arg1: i32 {tt.divisibility = 16 : i32}, %arg2: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %arg3: i32 {tt.divisibility = 16 : i32}) {
+func.func @transpose(%arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %arg1: i32 {tt.divisibility = 16 : i32}, %arg2: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %arg3: i32 {tt.divisibility = 16 : i32}) {
   // CHECK: %cst = arith.constant dense<true> : tensor<64x64xi1, [[row_layout]]>
   // CHECK: %cst_0 = arith.constant dense<0.000000e+00> : tensor<64x64xf32, [[row_layout]]>
   // CHECK: %cst_1 = arith.constant dense<true> : tensor<64x64xi1, [[col_layout]]>
@@ -122,7 +122,7 @@ func @transpose(%arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %arg1: i32 {tt
 }
 
 // CHECK-LABEL: loop
-func @loop(%arg0: !tt.ptr<f32>, %arg1: i32, %arg2: !tt.ptr<f32>, %arg3: i32, %arg4: i32) {
+func.func @loop(%arg0: !tt.ptr<f32>, %arg1: i32, %arg2: !tt.ptr<f32>, %arg3: i32, %arg4: i32) {
     // CHECK-NOT: triton_gpu.convert_layout
     // CHECK: [[loop_ret:%.*]]:2 = scf.for {{.*}} -> (tensor<64x64xf32, [[row_layout]]>, tensor<64x64x!tt.ptr<f32>, [[row_layout]]>)
     // CHECK-NEXT: {{.*}} = tt.load {{.*}} : tensor<64x64xf32, [[row_layout]]>
@@ -175,7 +175,7 @@ func @loop(%arg0: !tt.ptr<f32>, %arg1: i32, %arg2: !tt.ptr<f32>, %arg3: i32, %ar
 }
 
 // CHECK-LABEL: vecadd
-func @vecadd(%arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %arg1: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %arg2: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %arg3: i32) {
+func.func @vecadd(%arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %arg1: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %arg2: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %arg3: i32) {
   // CHECK-NOT: triton_gpu.convert_layout
   %c256_i32 = arith.constant 256 : i32
   %0 = tt.get_program_id {axis = 0 : i32} : i32
