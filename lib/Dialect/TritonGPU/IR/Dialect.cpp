@@ -296,9 +296,9 @@ void SharedEncodingAttr::print(AsmPrinter &printer) const {
 // InsertSliceAsyncOp
 //===----------------------------------------------------------------------===//
 
-ParseResult parseInsertSliceAsyncOp(OpAsmParser &parser,
+ParseResult InsertSliceAsyncOp::parse(OpAsmParser &parser,
                                     OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 4> allOperands;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> allOperands;
   Type srcType, dstType;
   SMLoc allOperandLoc = parser.getCurrentLocation();
   if (parser.parseOperandList(allOperands) ||
@@ -324,16 +324,14 @@ ParseResult parseInsertSliceAsyncOp(OpAsmParser &parser,
   return success();
 }
 
-void printInsertSliceAsyncOp(OpAsmPrinter &printer,
-                             InsertSliceAsyncOp insertSliceAsyncOp) {
+void InsertSliceAsyncOp::print(OpAsmPrinter &printer) {
   printer << " ";
-  printer << insertSliceAsyncOp.getOperation()->getOperands();
-  printer.printOptionalAttrDict(insertSliceAsyncOp->getAttrs(),
-                                /*elidedAttrs=*/{});
+  printer << getOperation()->getOperands();
+  printer.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{});
   printer << " : ";
-  printer.printStrippedAttrOrType(insertSliceAsyncOp.src().getType());
+  printer.printStrippedAttrOrType(getSrc().getType());
   printer << " -> ";
-  printer.printStrippedAttrOrType(insertSliceAsyncOp.result().getType());
+  printer.printStrippedAttrOrType(getResult().getType());
 }
 
 //===----------------------------------------------------------------------===//
@@ -402,24 +400,24 @@ void TritonGPUDialect::initialize() {
 // Verification
 //===----------------------------------------------------------------------===//
 
-static LogicalResult verify(InsertSliceAsyncOp op) {
-  if (!isSharedEncoding(op.getResult())) {
-    return op.emitOpError(
+LogicalResult InsertSliceAsyncOp::verify() {
+  if (!isSharedEncoding(getResult())) {
+    return emitOpError(
         "insert_slice_async should return a shared memory tensor");
   }
   return success();
 }
 
-static LogicalResult verify(ExtractSliceOp op) {
-  if (!isSharedEncoding(op.getResult())) {
-    return op.emitOpError("extract_slice should return a shared memory tensor");
+LogicalResult ExtractSliceOp::verify() {
+  if (!isSharedEncoding(getResult())) {
+    return emitOpError("extract_slice should return a shared memory tensor");
   }
   return success();
 }
 
-static LogicalResult verify(AllocTensorOp op) {
-  if (!isSharedEncoding(op.getResult())) {
-    return op.emitOpError("alloc_tensor should return a shared memory tensor");
+LogicalResult AllocTensorOp::verify() {
+  if (!isSharedEncoding(getResult())) {
+    return emitOpError("alloc_tensor should return a shared memory tensor");
   }
   return success();
 }

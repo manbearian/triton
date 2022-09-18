@@ -5,6 +5,7 @@ add_mlir_library(TritonAnalysis
   Alias.cpp
   Utility.cpp
 
-  DEPENDS
-  TritonGPUAttrDefsIncGen
+  LINK_LIBS PUBLIC
+  TritonIR
+  TritonGPUIR
 )

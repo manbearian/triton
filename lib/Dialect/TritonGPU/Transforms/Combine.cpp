@@ -1,5 +1,5 @@
 #include "mlir/Analysis/SliceAnalysis.h"
-#include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Matchers.h"
@@ -61,13 +61,13 @@ public:
     // cvt(type1, splat(type2, x)) -> splat(type1, x)
     if (auto splat = llvm::dyn_cast<triton::SplatOp>(arg)) {
       rewriter.replaceOpWithNewOp<triton::SplatOp>(op, op->getResultTypes(),
-                                                   splat.src());
+                                                   splat.getSrc());
       return mlir::success();
     }
     // cvt(type1, make_range(type2, x)) -> make_range(type1, x)
     if (auto range = llvm::dyn_cast<triton::MakeRangeOp>(arg)) {
       rewriter.replaceOpWithNewOp<triton::MakeRangeOp>(
-          op, op->getResultTypes(), range.start(), range.end());
+          op, op->getResultTypes(), range.getStart(), range.getEnd());
       return mlir::success();
     }
     // cvt(type, constant) -> constant
@@ -103,7 +103,7 @@ public:
     if (auto expand_dims = dyn_cast<triton::ExpandDimsOp>(op)) {
       return targetTensorType.getEncoding()
           .cast<triton::gpu::BlockedEncodingAttr>()
-          .squeeze(expand_dims.axis());
+          .squeeze(expand_dims.getAxis());
     }
     return targetTensorType.getEncoding();
   }
@@ -405,7 +405,7 @@ public:
         oldAcc.getLoc(), newRetType, oldAcc);
     auto newDot = rewriter.create<triton::DotOp>(
         dotOp.getLoc(), newRetType, dotOp.getOperand(0), dotOp.getOperand(1),
-        newAcc, dotOp.allowTF32());
+        newAcc, dotOp.getAllowTF32());
 
     rewriter.replaceOpWithNewOp<triton::gpu::ConvertLayoutOp>(
         op, oldRetType, newDot.getResult());

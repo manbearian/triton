@@ -148,7 +148,7 @@ struct TritonMakeRangePattern
                   ConversionPatternRewriter &rewriter) const override {
     Type retType = getTypeConverter()->convertType(op.getType());
     rewriter.replaceOpWithNewOp<triton::MakeRangeOp>(
-        op, retType, adaptor.start(), adaptor.end());
+        op, retType, adaptor.getStart(), adaptor.getEnd());
     return success();
   }
 };
@@ -161,21 +161,21 @@ struct TritonExpandDimsPattern
   matchAndRewrite(triton::ExpandDimsOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     // Type retType = op.getType());
-    RankedTensorType argType = adaptor.src().getType().cast<RankedTensorType>();
+    RankedTensorType argType = adaptor.getSrc().getType().cast<RankedTensorType>();
     Attribute _argEncoding = argType.getEncoding();
     if (!_argEncoding)
       return failure();
     auto argEncoding = _argEncoding.cast<triton::gpu::BlockedEncodingAttr>();
     // return shape
     auto retShape = argType.getShape().vec();
-    retShape.insert(retShape.begin() + op.axis(), 1);
+    retShape.insert(retShape.begin() + op.getAxis(), 1);
     // return encoding
     auto retSizePerThread = argEncoding.getSizePerThread().vec();
-    retSizePerThread.insert(retSizePerThread.begin() + op.axis(), 1);
+    retSizePerThread.insert(retSizePerThread.begin() + op.getAxis(), 1);
     auto retThreadsPerWarp = argEncoding.getThreadsPerWarp().vec();
-    retThreadsPerWarp.insert(retThreadsPerWarp.begin() + op.axis(), 1);
+    retThreadsPerWarp.insert(retThreadsPerWarp.begin() + op.getAxis(), 1);
     auto retWarpsPerCTA = argEncoding.getWarpsPerCTA().vec();
-    retWarpsPerCTA.insert(retWarpsPerCTA.begin() + op.axis(), 1);
+    retWarpsPerCTA.insert(retWarpsPerCTA.begin() + op.getAxis(), 1);
     SmallVector<unsigned, 4> retOrder(retShape.size());
     std::iota(retOrder.begin(), retOrder.end(), 0);
     triton::gpu::BlockedEncodingAttr retEncoding =
@@ -187,7 +187,7 @@ struct TritonExpandDimsPattern
         RankedTensorType::get(retShape, argType.getElementType(), retEncoding);
     // construct new op
     rewriter.replaceOpWithNewOp<triton::ExpandDimsOp>(
-        op, retType, adaptor.src(), adaptor.axis());
+        op, retType, adaptor.getSrc(), adaptor.getAxis());
     return success();
   }
 };
@@ -200,14 +200,14 @@ struct TritonDotPattern : public OpConversionPattern<triton::DotOp> {
                   ConversionPatternRewriter &rewriter) const override {
     Type retType = getTypeConverter()->convertType(op.getType());
     // a & b must be of smem layout
-    auto aType = adaptor.a().getType().cast<RankedTensorType>();
-    auto bType = adaptor.b().getType().cast<RankedTensorType>();
+    auto aType = adaptor.getA().getType().cast<RankedTensorType>();
+    auto bType = adaptor.getB().getType().cast<RankedTensorType>();
     Attribute aEncoding = aType.getEncoding();
     Attribute bEncoding = bType.getEncoding();
     if (!aEncoding || !bEncoding)
       return failure();
-    Value a = adaptor.a();
-    Value b = adaptor.b();
+    Value a = adaptor.getA();
+    Value b = adaptor.getB();
     SmallVector<unsigned, 2> order{1, 0};
     if (!aEncoding.isa<triton::gpu::SharedEncodingAttr>()) {
       Attribute encoding =
@@ -224,7 +224,7 @@ struct TritonDotPattern : public OpConversionPattern<triton::DotOp> {
       b = rewriter.create<triton::gpu::ConvertLayoutOp>(b.getLoc(), dstType, b);
     }
     auto newDot = rewriter.replaceOpWithNewOp<triton::DotOp>(
-        op, retType, a, b, adaptor.c(), adaptor.allowTF32());
+        op, retType, a, b, adaptor.getC(), adaptor.getAllowTF32());
     return success();
   }
 };
@@ -236,9 +236,9 @@ struct TritonLoadPattern : public OpConversionPattern<triton::LoadOp> {
   matchAndRewrite(triton::LoadOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<triton::LoadOp>(
-        op, typeConverter->convertType(op.getType()), adaptor.ptr(),
-        adaptor.mask(), adaptor.other(), adaptor.cache(), adaptor.evict(),
-        adaptor.isVolatile());
+        op, typeConverter->convertType(op.getType()), adaptor.getPtr(),
+        adaptor.getMask(), adaptor.getOther(), adaptor.getCache(), adaptor.getEvict(),
+        adaptor.getIsVolatile());
     return success();
   }
 };
@@ -250,7 +250,7 @@ struct TritonStorePattern : public OpConversionPattern<triton::StoreOp> {
   matchAndRewrite(triton::StoreOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto newOp = rewriter.replaceOpWithNewOp<triton::StoreOp>(
-        op, adaptor.ptr(), adaptor.value(), adaptor.mask());
+        op, adaptor.getPtr(), adaptor.getValue(), adaptor.getMask());
     return success();
   }
 };
@@ -263,8 +263,8 @@ struct TritonExtElemwisePattern
   matchAndRewrite(triton::ExtElemwiseOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<triton::ExtElemwiseOp>(
-        op, typeConverter->convertType(op.getType()), adaptor.args(),
-        adaptor.libname(), adaptor.libpath(), adaptor.symbol());
+        op, typeConverter->convertType(op.getType()), adaptor.getArgs(),
+        adaptor.getLibname(), adaptor.getLibpath(), adaptor.getSymbol());
     return success();
   }
 };
@@ -290,7 +290,7 @@ struct TritonBroadcastPattern
   LogicalResult
   matchAndRewrite(BroadcastOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto srcType = adaptor.src().getType().cast<RankedTensorType>();
+    auto srcType = adaptor.getSrc().getType().cast<RankedTensorType>();
     auto srcEncoding = srcType.getEncoding();
     if (!srcEncoding)
       return failure();
@@ -312,7 +312,7 @@ struct TritonReducePattern : public OpConversionPattern<triton::ReduceOp> {
                   ConversionPatternRewriter &rewriter) const override {
     Type retType = this->getTypeConverter()->convertType(op.getType());
     auto newOp = rewriter.replaceOpWithNewOp<triton::ReduceOp>(
-        op, retType, adaptor.redOp(), adaptor.operand(), adaptor.axis());
+        op, retType, adaptor.getRedOp(), adaptor.getOperand(), adaptor.getAxis());
     return success();
   }
 };

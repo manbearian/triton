@@ -105,12 +105,12 @@ struct CoalescePass : public TritonGPUCoalesceBase<CoalescePass> {
       OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPoint(curr);
       if (auto load = dyn_cast<triton::LoadOp>(curr))
-        coalesceOp<triton::LoadOp>(axisInfo, curr, load.ptr(), builder);
+        coalesceOp<triton::LoadOp>(axisInfo, curr, load.getPtr(), builder);
       if (auto load = dyn_cast<triton::gpu::InsertSliceAsyncOp>(curr))
-        coalesceOp<triton::gpu::InsertSliceAsyncOp>(axisInfo, curr, load.src(),
+        coalesceOp<triton::gpu::InsertSliceAsyncOp>(axisInfo, curr, load.getSrc(),
                                                     builder);
       if (auto store = dyn_cast<triton::StoreOp>(curr))
-        coalesceOp<triton::StoreOp>(axisInfo, curr, store.ptr(), builder);
+        coalesceOp<triton::StoreOp>(axisInfo, curr, store.getPtr(), builder);
     });
   }
 };

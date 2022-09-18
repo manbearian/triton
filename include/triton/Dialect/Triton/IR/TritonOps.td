@@ -5,6 +5,7 @@ include "triton/Dialect/Triton/IR/TritonDialect.td"
 include "triton/Dialect/Triton/IR/TritonTypes.td"
 include "triton/Dialect/Triton/IR/TritonAttrDefs.td"
 include "mlir/IR/OpBase.td"
+include "mlir/IR/PatternBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td" // NoSideEffect
 include "mlir/Interfaces/ControlFlowInterfaces.td" // BranchOpInterface
 include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
@@ -101,9 +102,7 @@ def TT_LoadOp : TT_Op<"load",
     ];
 
     // let assemblyFormat = "operands attr-dict `:` type($result)";
-    let parser = [{ return mlir::triton::parseLoadOp(parser, result); }];
-
-    let printer = [{ return mlir::triton::printLoadOp(p, *this); }];
+    let hasCustomAssemblyFormat = 1;
 
     let hasCanonicalizer = 1;
 }
@@ -126,9 +125,7 @@ def TT_StoreOp : TT_Op<"store",
     ];
 
     // let assemblyFormat = "operands attr-dict `:` type($value)";
-    let parser = [{ return mlir::triton::parseStoreOp(parser, result); }];
-
-    let printer = [{ return mlir::triton::printStoreOp(p, *this); }];
+    let hasCustomAssemblyFormat = 1;
 
     let hasCanonicalizer = 1;
 }

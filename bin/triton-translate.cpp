@@ -3,7 +3,7 @@
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Dialect.h"
-#include "mlir/Parser.h"
+#include "mlir/Parser/Parser.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
@@ -37,8 +37,8 @@ OwningOpRef<ModuleOp> loadMLIRModule(llvm::StringRef inputFilename,
 
   mlir::DialectRegistry registry;
   registry.insert<TritonDialect, triton::gpu::TritonGPUDialect,
-                  mlir::math::MathDialect, arith::ArithmeticDialect,
-                  StandardOpsDialect, scf::SCFDialect>();
+                  math::MathDialect, arith::ArithmeticDialect,
+                  func::FuncDialect, scf::SCFDialect>();
 
   context.appendDialectRegistry(registry);
 
@@ -50,7 +50,7 @@ OwningOpRef<ModuleOp> loadMLIRModule(llvm::StringRef inputFilename,
     context.loadAllAvailableDialects();
     context.allowUnregisteredDialects();
 
-    OwningOpRef<ModuleOp> module(parseSourceFile(sourceMgr, &context));
+    auto module = parseSourceFile<ModuleOp>(sourceMgr, &context);
     if (!module) {
       llvm::errs() << "Parse MLIR file failed.";
       return nullptr;

@@ -1,7 +1,6 @@
 #ifndef TRITON_PATTERNS
 #define TRITON_PATTERNS
 
-include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
 include "triton/Dialect/Triton/IR/TritonOps.td"
 

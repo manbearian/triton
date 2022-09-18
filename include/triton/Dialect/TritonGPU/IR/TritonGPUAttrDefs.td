@@ -1,6 +1,7 @@
 #ifndef TRITONGPU_ATTRDEFS
 #define TRITONGPU_ATTRDEFS
 
+include "mlir/IR/AttrTypeBase.td"
 include "triton/Dialect/TritonGPU/IR/TritonGPUDialect.td"
 
 //===----------------------------------------------------------------------===//
@@ -64,6 +65,8 @@ A_{3, 2}  A_{3, 3}  A_{3, 0}  A_{3, 1} ...   [phase 1] /
     "unsigned":$vec, "unsigned":$perPhase, "unsigned":$maxPhase,
     ArrayRefParameter<"unsigned", "order of axes by the rate of changing">:$order
   );
+
+  let hasCustomAssemblyFormat = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -191,6 +194,7 @@ for
     // ArrayRefParameter<"unsigned">:$sizePerCTA
   );
 
+  let hasCustomAssemblyFormat = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -282,6 +286,8 @@ For example, the matrix L corresponding to blockTileSize=[32,16] is:
     "unsigned":$version,
     ArrayRefParameter<"unsigned">:$warpsPerCTA
   );
+
+  let hasCustomAssemblyFormat = 1;
 }
 
 def SliceEncodingAttr : DistributedEncoding<"SliceEncoding"> {
@@ -311,6 +317,8 @@ def SliceEncodingAttr : DistributedEncoding<"SliceEncoding"> {
     // TODO: constraint here to only take distributed encodings
     "Attribute":$parent
   );
+
+  let hasCustomAssemblyFormat = 1;
 }
 
 

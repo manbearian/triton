@@ -124,19 +124,9 @@ def TTG_InsertSliceAsyncOp : TTG_Op<"insert_slice_async",
 
   let results = (outs TT_Tensor:$result);
 
-  //let assemblyFormat = [{
-  //  $src `,` $dst ``
-  //  $index, $mask, $other
-  //  attr-dict `:` type($src) `->` type($dst)
-  //}];
+  let hasCustomAssemblyFormat = 1;
 
-  // The custom parser could be replaced with oilist in LLVM-16
-  let parser = [{ return parseInsertSliceAsyncOp(parser, result); }];
-
-  let printer = [{ return printInsertSliceAsyncOp(p, *this); }];
-
-  // result needs to be of shared layout
-  let verifier = [{ return ::verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TTG_ExtractSliceOp : TTG_Op<"extract_slice", [NoSideEffect, InferTypeOpInterface]> {
@@ -171,8 +161,7 @@ def TTG_ExtractSliceOp : TTG_Op<"extract_slice", [NoSideEffect, InferTypeOpInter
           ::llvm::SmallVectorImpl<::mlir::Type> &inferredReturnTypes);
   }];
 
-  // result needs to be of shared layout
-  let verifier = [{ return ::verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TTG_AllocTensorOp : TTG_Op<"alloc_tensor", [NoSideEffect]> {
@@ -189,8 +178,7 @@ def TTG_AllocTensorOp : TTG_Op<"alloc_tensor", [NoSideEffect]> {
 
   let results = (outs TT_Tensor:$result);
 
-  // result needs to be of shared layout
-  let verifier = [{ return ::verify(*this); }];
+  let hasVerifier = 1;
 }
 
 #endif

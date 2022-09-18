@@ -19,3 +19,5 @@ add_mlir_dialect_library(TritonGPUTransforms
   TritonGPUIR
   MLIRTransformUtils
 )
+
+target_include_directories(TritonGPUTransforms PUBLIC ${CMAKE_CURRENT_BINARY_DIR})

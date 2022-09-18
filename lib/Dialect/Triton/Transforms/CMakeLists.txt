@@ -9,3 +9,5 @@ add_mlir_dialect_library(TritonTransforms
   TritonTransformsIncGen
   TritonCombineIncGen
 )
+
+target_include_directories(TritonTransforms PUBLIC ${CMAKE_CURRENT_BINARY_DIR})

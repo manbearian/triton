@@ -17,6 +17,7 @@ AliasInfo AliasInfo::join(const AliasInfo &lhs, const AliasInfo &rhs) {
   return ret;
 }
 
+#if NOT_COMPATIBLE_WITH_LATEST_LLLVM
 ChangeResult SharedMemoryAliasAnalysis::visitOperation(
     Operation *op, ArrayRef<LatticeElement<AliasInfo> *> operands) {
   AliasInfo aliasInfo;
@@ -61,5 +62,6 @@ ModRefResult SharedMemoryAliasAnalysis::getModRef(Operation *op,
   // TODO: implement
   return ModRefResult::getModAndRef();
 }
+#endif
 
 } // namespace mlir

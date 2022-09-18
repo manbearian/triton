@@ -70,59 +70,59 @@ if("${LLVM_LIBRARY_DIR}" STREQUAL "")
 else()
     set(LLVM_LDFLAGS "-L${LLVM_LIBRARY_DIR}")
     set(LLVM_LIBRARIES
-libLLVMNVPTXCodeGen.a
-libLLVMNVPTXDesc.a
-libLLVMNVPTXInfo.a
-libLLVMAMDGPUDisassembler.a
-libLLVMMCDisassembler.a
-libLLVMAMDGPUCodeGen.a
-libLLVMMIRParser.a
-libLLVMGlobalISel.a
-libLLVMSelectionDAG.a
-libLLVMipo.a
-libLLVMInstrumentation.a
-libLLVMVectorize.a
-libLLVMLinker.a
-libLLVMIRReader.a
-libLLVMAsmParser.a
-libLLVMFrontendOpenMP.a
-libLLVMAsmPrinter.a
-libLLVMDebugInfoDWARF.a
-libLLVMCodeGen.a
-libLLVMTarget.a
-libLLVMScalarOpts.a
-libLLVMInstCombine.a
-libLLVMAggressiveInstCombine.a
-libLLVMTransformUtils.a
-libLLVMBitWriter.a
-libLLVMAnalysis.a
-libLLVMProfileData.a
-libLLVMObject.a
-libLLVMTextAPI.a
-libLLVMBitReader.a
-libLLVMAMDGPUAsmParser.a
-libLLVMMCParser.a
-libLLVMAMDGPUDesc.a
-libLLVMAMDGPUUtils.a
-libLLVMMC.a
-libLLVMDebugInfoCodeView.a
-libLLVMDebugInfoMSF.a
-libLLVMCore.a
-libLLVMRemarks.a
-libLLVMBitstreamReader.a
-libLLVMBinaryFormat.a
-libLLVMAMDGPUInfo.a
-libLLVMSupport.a
-libLLVMDemangle.a
-libLLVMPasses.a
-libLLVMAnalysis.a
-libLLVMTransformUtils.a
-libLLVMScalarOpts.a
-libLLVMTransformUtils.a
-libLLVMipo.a
-libLLVMObjCARCOpts.a
-libLLVMCoroutines.a
-libLLVMAnalysis.a
+# libLLVMNVPTXCodeGen.a
+# libLLVMNVPTXDesc.a
+# libLLVMNVPTXInfo.a
+# libLLVMAMDGPUDisassembler.a
+# libLLVMMCDisassembler.a
+# libLLVMAMDGPUCodeGen.a
+# libLLVMMIRParser.a
+# libLLVMGlobalISel.a
+# libLLVMSelectionDAG.a
+# libLLVMipo.a
+# libLLVMInstrumentation.a
+# libLLVMVectorize.a
+# libLLVMLinker.a
+# libLLVMIRReader.a
+# libLLVMAsmParser.a
+# libLLVMFrontendOpenMP.a
+# libLLVMAsmPrinter.a
+# libLLVMDebugInfoDWARF.a
+# libLLVMCodeGen.a
+# libLLVMTarget.a
+# libLLVMScalarOpts.a
+# libLLVMInstCombine.a
+# libLLVMAggressiveInstCombine.a
+# libLLVMTransformUtils.a
+# libLLVMBitWriter.a
+# libLLVMAnalysis.a
+# libLLVMProfileData.a
+# libLLVMObject.a
+# libLLVMTextAPI.a
+# libLLVMBitReader.a
+# libLLVMAMDGPUAsmParser.a
+# libLLVMMCParser.a
+# libLLVMAMDGPUDesc.a
+# libLLVMAMDGPUUtils.a
+# libLLVMMC.a
+# libLLVMDebugInfoCodeView.a
+# libLLVMDebugInfoMSF.a
+# libLLVMCore.a
+# libLLVMRemarks.a
+# libLLVMBitstreamReader.a
+# libLLVMBinaryFormat.a
+# libLLVMAMDGPUInfo.a
+# libLLVMSupport.a
+# libLLVMDemangle.a
+# libLLVMPasses.a
+# libLLVMAnalysis.a
+# libLLVMTransformUtils.a
+# libLLVMScalarOpts.a
+# libLLVMTransformUtils.a
+# libLLVMipo.a
+# libLLVMObjCARCOpts.a
+# libLLVMCoroutines.a
+# libLLVMAnalysis.a
 )
 endif()
 include_directories(${LLVM_INCLUDE_DIRS})
@@ -130,9 +130,12 @@ include_directories(${LLVM_INCLUDE_DIRS})
 # Python module
 if(BUILD_PYTHON_MODULE)
     message(STATUS "Adding Python module")
+    find_package(Python REQUIRED COMPONENTS Development)
     set(PYTHON_SRC_PATH ${CMAKE_CURRENT_SOURCE_DIR}/python/src)
-    include_directories("." ${PYTHON_SRC_PATH} ${PYTHON_INCLUDE_DIRS})
-    link_directories(${PYTHON_LINK_DIRS})
+    include_directories("." ${PYTHON_SRC_PATH} ${Python_INCLUDE_DIRS})
+    link_directories(${Python_LIBRARY_DIRS})
+    link_libraries(${Python_LIBRARIES})
+    add_link_options(${Python_LINK_OPTIONS})
     set(PYTHON_SRC ${PYTHON_SRC_PATH}/main.cc ${PYTHON_SRC_PATH}/triton.cc)
 endif()
 
@@ -149,18 +152,19 @@ endif()
 # endif()
 
 
-# MLIR
-find_package(MLIR REQUIRED CONFIG PATHS ${LLVM_LIBRARY_DIR}/cmake/mlir)
-
 list(APPEND CMAKE_MODULE_PATH ${LLVM_LIBRARY_DIR}/cmake/llvm)
 list(APPEND CMAKE_MODULE_PATH ${LLVM_LIBRARY_DIR}/cmake/mlir)
+
+# MLIR
+find_package(MLIR REQUIRED CONFIG PATHS ${LLVM_LIBRARY_DIR}/cmake/mlir)
 
 include(TableGen) # required by AddMLIR
 include(AddLLVM)
 include(AddMLIR)
-# include(HandleLLVMOptions) # human-friendly error message
+include(HandleLLVMOptions)
 
 include_directories(${MLIR_INCLUDE_DIRS})
+include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include) # Tablegen'd files
 # link_directories(${LLVM_LIBRARY_DIR})
@@ -192,7 +196,7 @@ target_link_libraries(triton
   # optimizations
   MLIRPass
   MLIRTransforms
-  MLIRLLVMIR
+  MLIRLLVMIRTransforms
   MLIRSupport
   MLIRTargetLLVMIRExport
   MLIRExecutionEngine

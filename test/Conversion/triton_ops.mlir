@@ -1,6 +1,6 @@
 // RUN: triton-opt %s | FileCheck %s
 
-func @cast_ops(%scalar_ptr: !tt.ptr<f32>, %scalar_f32: f32, %scalar_i64: i64) {
+func.func @cast_ops(%scalar_ptr: !tt.ptr<f32>, %scalar_f32: f32, %scalar_i64: i64) {
   // scalar -> scalar
   // CHECK:  i64 -> !tt.ptr<f32>
   %0 = tt.int_to_ptr %scalar_i64 : i64 -> !tt.ptr<f32>
@@ -35,7 +35,7 @@ func @cast_ops(%scalar_ptr: !tt.ptr<f32>, %scalar_f32: f32, %scalar_i64: i64) {
   return
 }
 
-func @addptr_ops(%scalar_ptr: !tt.ptr<f32>, %scalar_i32: i32) {
+func.func @addptr_ops(%scalar_ptr: !tt.ptr<f32>, %scalar_i32: i32) {
   // scalar -> scalar
   // CHECK: !tt.ptr<f32>
   %0 = tt.addptr %scalar_ptr, %scalar_i32 : !tt.ptr<f32>

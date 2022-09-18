@@ -82,7 +82,7 @@ TritonGPUConversionTarget::TritonGPUConversionTarget(
                scf::ReduceReturnOp>();
 
   addDynamicallyLegalDialect<arith::ArithmeticDialect, math::MathDialect,
-                             triton::TritonDialect, StandardOpsDialect,
+                             triton::TritonDialect, func::FuncDialect,
                              scf::SCFDialect>([&](Operation *op) {
     if (typeConverter.isLegal(op))
       return true;
@@ -92,9 +92,9 @@ TritonGPUConversionTarget::TritonGPUConversionTarget(
   // We have requirements for the data layouts
   addDynamicallyLegalOp<triton::DotOp>([this](triton::DotOp dotOp) -> bool {
     Attribute aEncoding =
-        dotOp.a().getType().cast<RankedTensorType>().getEncoding();
+        dotOp.getA().getType().cast<RankedTensorType>().getEncoding();
     Attribute bEncoding =
-        dotOp.b().getType().cast<RankedTensorType>().getEncoding();
+        dotOp.getB().getType().cast<RankedTensorType>().getEncoding();
     if (aEncoding && aEncoding.isa<triton::gpu::SharedEncodingAttr>() &&
         bEncoding && bEncoding.isa<triton::gpu::SharedEncodingAttr>())
       return true;

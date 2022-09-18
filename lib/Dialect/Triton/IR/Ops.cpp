@@ -37,8 +37,8 @@ static Type getPointerTypeFromTensor(Type type) {
 }
 
 // Parser & printer for assembly forms
-ParseResult parseLoadOp(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 4> allOperands;
+ParseResult LoadOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> allOperands;
   Type resultTypes[1];
   SMLoc allOperandLoc = parser.getCurrentLocation();
   if (parser.parseOperandList(allOperands) ||
@@ -61,16 +61,16 @@ ParseResult parseLoadOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-void printLoadOp(OpAsmPrinter &printer, LoadOp loadOp) {
+void LoadOp::print(OpAsmPrinter &printer) {
   printer << " ";
-  printer << loadOp.getOperation()->getOperands();
-  printer.printOptionalAttrDict(loadOp->getAttrs(), /*elidedAttrs=*/{});
+  printer << getOperation()->getOperands();
+  printer.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{});
   printer << " : ";
-  printer.printStrippedAttrOrType(loadOp.result().getType());
+  printer.printStrippedAttrOrType(getResult().getType());
 }
 
-ParseResult parseStoreOp(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 4> allOperands;
+ParseResult StoreOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> allOperands;
   Type valueType;
   SMLoc allOperandLoc = parser.getCurrentLocation();
   if (parser.parseOperandList(allOperands) ||
@@ -90,12 +90,12 @@ ParseResult parseStoreOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-void printStoreOp(OpAsmPrinter &printer, StoreOp storeOp) {
+void StoreOp::print(OpAsmPrinter &printer) {
   printer << " ";
-  printer << storeOp.getOperation()->getOperands();
-  printer.printOptionalAttrDict(storeOp->getAttrs(), /*elidedAttrs=*/{});
+  printer << getOperation()->getOperands();
+  printer.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{});
   printer << " : ";
-  printer.printStrippedAttrOrType(storeOp.value().getType());
+  printer.printStrippedAttrOrType(getValue().getType());
 }
 
 } // namespace triton
@@ -149,12 +149,12 @@ void LoadOp::build(::mlir::OpBuilder &builder, ::mlir::OperationState &state,
     }
   }
   state.addAttribute(
-      cacheAttrName(state.name),
+      getCacheAttrName(state.name),
       ::mlir::triton::CacheModifierAttr::get(builder.getContext(), cache));
   state.addAttribute(
-      evictAttrName(state.name),
+      getEvictAttrName(state.name),
       ::mlir::triton::EvictionPolicyAttr::get(builder.getContext(), evict));
-  state.addAttribute(isVolatileAttrName(state.name),
+  state.addAttribute(getIsVolatileAttrName(state.name),
                      builder.getBoolAttr(isVolatile));
   state.addTypes({resultType});
 }
@@ -163,18 +163,19 @@ void LoadOp::build(::mlir::OpBuilder &builder, ::mlir::OperationState &state,
 
 //-- SplatOp --
 OpFoldResult SplatOp::fold(ArrayRef<Attribute> operands) {
-  auto constOperand = src().getDefiningOp<arith::ConstantOp>();
+  auto constOperand = getSrc().getDefiningOp<arith::ConstantOp>();
   if (!constOperand)
     return {};
 
   auto shapedType = getType().cast<ShapedType>();
-  auto ret = SplatElementsAttr::get(shapedType, {constOperand.getValue()});
+  auto ret = SplatElementsAttr::get(
+      shapedType, ArrayRef<Attribute>{constOperand.getValue()});
   return ret;
 }
 
 //-- BroadcastOp --
 OpFoldResult BroadcastOp::fold(ArrayRef<Attribute> operands) {
-  auto constOperand = src().getDefiningOp<arith::ConstantOp>();
+  auto constOperand = getSrc().getDefiningOp<arith::ConstantOp>();
   if (!constOperand)
     return {};
 
