@@ -1,2 +1,3 @@
+add_subdirectory(TritonToAffine)
 add_subdirectory(TritonToTritonGPU)
 add_subdirectory(TritonGPUToLLVM)

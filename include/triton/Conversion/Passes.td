@@ -25,7 +25,6 @@ def ConvertTritonToTritonGPU: Pass<"convert-triton-to-tritongpu", "mlir::ModuleO
    ];
 }
 
-
 def ConvertTritonGPUToLLVM : Pass<"convert-triton-gpu-to-llvm", "mlir::ModuleOp"> {
     let summary = "Convert TritonGPU to LLVM";
     let description = [{
@@ -42,6 +41,12 @@ def ConvertTritonGPUToLLVM : Pass<"convert-triton-gpu-to-llvm", "mlir::ModuleOp"
                              "mlir::triton::gpu::TritonGPUDialect",
                              "mlir::NVVM::NVVMDialect",
                              "mlir::func::FuncDialect"];
+}
+
+def TritonToAffine : Pass<"triton-to-affine", "func::FuncOp"> {
+  let summary = "Convert Triton to Affine dialect";
+  let constructor = "triton::createTritonToAffinePass()";
+  let dependentDialects = ["triton::TritonDialect"];
 }
 
 #endif

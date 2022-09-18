@@ -3,6 +3,7 @@
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVM.h"
+#include "triton/Conversion/TritonToAffine/TritonToAffine.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPU.h"
 
 namespace mlir {
