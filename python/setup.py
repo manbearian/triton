@@ -31,6 +31,16 @@ def get_build_type():
         # TODO: change to release when stable enough
         return "TritonRelBuildWithAsserts"
 
+
+def get_codegen_backends():
+    backends = []
+    env_prefix = "TRITON_CODEGEN_"
+    for name, _ in os.environ.items():
+        if name.startswith(env_prefix) and check_env_flag(name):
+            assert name.count(env_prefix) <= 1
+            backends.append(name.replace(env_prefix, '').lower())
+    return backends
+
 # --- third party packages -----
 
 
@@ -193,6 +203,11 @@ class CMakeBuild(build_ext):
         cfg = get_build_type()
         build_args = ["--config", cfg]
 
+        codegen_backends = get_codegen_backends()
+        if len(codegen_backends) > 0:
+            all_codegen_backends = ';'.join(codegen_backends)
+            cmake_args += ["-DTRITON_CODEGEN_BACKENDS=" + all_codegen_backends]
+
         if platform.system() == "Windows":
             cmake_args += [f"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_{cfg.upper()}={extdir}"]
             if sys.maxsize > 2**32:
@@ -227,6 +242,7 @@ setup(
         "triton/ops",
         "triton/ops/blocksparse",
         "triton/runtime",
+        "triton/third_party",
         "triton/tools",
     ],
     install_requires=[

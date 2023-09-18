@@ -1,3 +1,7 @@
 [submodule "deps/dlfcn-win32"]
 	path = deps/dlfcn-win32
 	url = https://github.com/dlfcn-win32/dlfcn-win32.git
+[submodule "triton-shared"]
+	path = third_party/triton-shared
+	url = https://github.com/manbearian/triton-shared.git
+	branch = main
