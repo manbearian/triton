@@ -5,7 +5,7 @@ on:
     inputs:
       msowner:
         required: true
-        default: ms@example.com      
+        default: ianb@microsoft.com      
       amdowner:
         required: true
         default: amd@example.com
