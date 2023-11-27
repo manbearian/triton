@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       msowner:
-        required: true
-        default: ianb@microsoft.com      
+        description: 'override defualt Microsoft test owner list'
+        required: false
       amdowner:
         required: true
         default: amd@example.com
@@ -14,6 +14,9 @@ on:
         default: yudong.si@intel.com,jian.hui.li@intel.com
   push:
     branches: [main]
+
+env:
+    MS_OWNER: ianb@microsoft.com
 
 jobs:
   Runner-Preparation:
@@ -173,7 +176,7 @@ jobs:
         uses: ./.github/actions/sent-mail
         with:
           jobname: Integration-Tests-Shared-Middle-Layer
-          jobowner: ${{ inputs.msowner }}
+          jobowner: ${{ vars.MS_OWNER }}
           ghrepo: ${{ github.repository }}
           ghrunid: ${{ github.run_id }}   
       - name: Integration-Tests-AMD-Notify
