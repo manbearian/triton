@@ -176,7 +176,7 @@ jobs:
         uses: ./.github/actions/sent-mail
         with:
           jobname: Integration-Tests-Shared-Middle-Layer
-          jobowner: $MS_OWNER
+          jobowner: ianb@microsoft.com
           ghrepo: ${{ github.repository }}
           ghrunid: ${{ github.run_id }}   
       - name: Integration-Tests-AMD-Notify
