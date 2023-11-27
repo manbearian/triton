@@ -38,6 +38,17 @@ bool ReduceOpHelper::isReductionOnLayoutFastAxis() {
          getParentOrder(getSrcLayout())[0];
 }
 
+SmallVector<unsigned> ReduceOpHelper::getOrderWithAxisAtBeginning() {
+  auto srcLayout = getSrcLayout();
+  auto order = triton::gpu::getOrder(srcLayout);
+  auto it = std::find(order.begin(), order.end(), axis);
+  // delete the axis from order
+  order.erase(it);
+  // insert axis at the beginning of order
+  order.insert(order.begin(), axis);
+  return order;
+}
+
 // Thread offset is the thread index offset of two adjacent threads on the
 // reduction axis within the warp.
 unsigned ReduceOpHelper::getThreadOffsetOnReductionAxis() {
@@ -56,11 +67,11 @@ unsigned ReduceOpHelper::getThreadOffsetOnReductionAxis() {
     threadOffset = threadsPerWarp[sliceLayout.getDim()];
   } else {
     auto threadsPerWarp = triton::gpu::getThreadsPerWarp(srcLayout);
-    if (threadsPerWarp.size() == 1) {
-      threadOffset = 1;
-    } else {
-      assert(threadsPerWarp.size() == 2 && "Only supports 2D layouts");
-      threadOffset = axis == 0 ? threadsPerWarp[1] : threadsPerWarp[0];
+    auto order = triton::gpu::getOrder(srcLayout);
+    for (unsigned i = 0; i < order.size(); i++) {
+      if (order[i] == axis)
+        break;
+      threadOffset *= threadsPerWarp[order[i]];
     }
   }
   return threadOffset;
@@ -87,7 +98,7 @@ bool shouldUseDistSmem(Attribute srcLayout, Attribute dstLayout) {
     auto dim = sliceLayout.getDim();
     auto CTAsPerCGA = triton::gpu::getCTAsPerCGA(sliceLayout.getParent());
     if (CTAsPerCGA[dim] != 1)
-      assert(0 && "Layout conversion to be implemented");
+      llvm::report_fatal_error("Layout conversion to be implemented");
   }
 
   // Case where CTAsPerCGA of dstLayout in the sliced dim is not 1 is supported
@@ -150,8 +161,10 @@ unsigned ReduceOpHelper::getThreadsReductionAxis() {
 }
 
 bool ReduceOpHelper::isWarpSynchronous() {
-  auto argsLayout = getSrcLayout();
-  return triton::gpu::getWarpsPerCTA(argsLayout)[axis] == 1;
+  auto srcLayout = getSrcLayout();
+  auto srcShape = getSrcShape();
+  return triton::gpu::getWarpsPerCTAWithUniqueData(srcLayout, srcShape)[axis] ==
+         1;
 }
 
 SmallVector<unsigned> ReduceOpHelper::getScratchConfig() {
@@ -381,7 +394,7 @@ bool supportMMA(triton::DotOp op, int version) {
   auto aElemTy = op.getA().getType().cast<RankedTensorType>().getElementType();
   auto bElemTy = op.getB().getType().cast<RankedTensorType>().getElementType();
   if (version == 3) {
-    if (!::triton::tools::getBoolEnv("ENABLE_MMA_V3"))
+    if (::triton::tools::getBoolEnv("DISABLE_MMA_V3"))
       return false;
     auto retType = op.getResult().getType().cast<RankedTensorType>();
     auto retShapePerCTA = triton::gpu::getShapePerCTA(retType);
@@ -424,7 +437,38 @@ bool supportMMA(Value value, int version) {
          (elemTy.isInteger(8) && version >= 2);
 }
 
-bool isMmaToDotShortcut(RankedTensorType &srcTy, RankedTensorType &dstTy) {
+static bool isMmaToMmaShortcut(Attribute srcEncoding, Attribute dstEncoding) {
+  auto src = srcEncoding.dyn_cast<triton::gpu::MmaEncodingAttr>();
+  auto dst = dstEncoding.dyn_cast<triton::gpu::MmaEncodingAttr>();
+  if (!src || !dst)
+    return false;
+  auto srcInstrShape = src.getInstrShape();
+  auto dstInstrShape = dst.getInstrShape();
+  // when #mma = MmaEncoding<version=3, warpsPerCTA=[..., 1]>
+  return src && dst && src.getVersionMajor() == 3 &&
+         src.getWarpsPerCTA()[1] == 1 && dst.getVersionMajor() == 3 &&
+         dst.getWarpsPerCTA()[1] == 1;
+}
+
+bool isMmaToMmaShortcut(RankedTensorType srcTy, RankedTensorType dstTy) {
+  return isMmaToMmaShortcut(srcTy.getEncoding(), dstTy.getEncoding());
+}
+
+// For MMAV3 dotOperand layout matches mma operand for f16 case.
+bool matchMmaV3AndDotOperandLayout(RankedTensorType srcTy,
+                                   RankedTensorType dstTy) {
+  auto srcLayout = srcTy.getEncoding();
+  auto dstLayout = dstTy.getEncoding();
+  auto mmaLayout = srcLayout.cast<triton::gpu::MmaEncodingAttr>();
+  auto dotOperandLayout = dstLayout.cast<triton::gpu::DotOperandEncodingAttr>();
+  return mmaLayout.getVersionMajor() == 3 && dotOperandLayout.getOpIdx() == 0 &&
+         isMmaToMmaShortcut(dotOperandLayout.getParent(), srcLayout) &&
+         srcTy.getElementType().isF16();
+}
+
+bool isMmaToDotShortcut(RankedTensorType srcTy, RankedTensorType dstTy) {
+  if (matchMmaV3AndDotOperandLayout(srcTy, dstTy))
+    return true;
   // dot_op<opIdx=0, parent=#mma> = #mma
   // when #mma = MmaEncoding<version=2, warpsPerCTA=[..., 1]>
   auto srcLayout = srcTy.getEncoding();
@@ -436,17 +480,6 @@ bool isMmaToDotShortcut(RankedTensorType &srcTy, RankedTensorType &dstTy) {
          dotOperandLayout.getOpIdx() == 0 &&
          dotOperandLayout.getParent() == mmaLayout &&
          !srcTy.getElementType().isF32();
-}
-
-bool isMmaToMmaShortcut(RankedTensorType &srcTy, RankedTensorType &dstTy) {
-  auto src = srcTy.getEncoding().cast<triton::gpu::MmaEncodingAttr>();
-  auto dst = dstTy.getEncoding().cast<triton::gpu::MmaEncodingAttr>();
-  auto srcElemsPerThread = triton::gpu::getTotalElemsPerThread(srcTy);
-  auto dstElemsPerThread = triton::gpu::getTotalElemsPerThread(dstTy);
-  // when #mma = MmaEncoding<version=3, warpsPerCTA=[..., 1]>
-  return src.getVersionMajor() == 3 && src.getWarpsPerCTA()[1] == 1 &&
-         dst.getVersionMajor() == 3 && dst.getWarpsPerCTA()[1] == 1 &&
-         srcElemsPerThread == dstElemsPerThread;
 }
 
 bool isSingleValue(Value value) {
@@ -607,7 +640,10 @@ SetVector<Operation *> multiRootGetSlice(Operation *op,
     auto *currentOp = (slice)[currentIndex];
     // Compute and insert the backwardSlice starting from currentOp.
     backwardSlice.clear();
-    getBackwardSlice(currentOp, &backwardSlice, backwardFilter);
+    mlir::BackwardSliceOptions opt;
+    opt.omitBlockArguments = true;
+    opt.filter = backwardFilter;
+    getBackwardSlice(currentOp, &backwardSlice, opt);
     slice.insert(backwardSlice.begin(), backwardSlice.end());
 
     // Compute and insert the forwardSlice starting from currentOp.

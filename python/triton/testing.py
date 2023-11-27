@@ -32,8 +32,11 @@ def do_bench_cudagraph(fn, rep=20, grad_to_none=None):
     """
     if torch.cuda.current_stream() == torch.cuda.default_stream():
         raise RuntimeError("Cannot capture graph in default stream. Please use side stream in benchmark code.")
-    # record CUDAGraph
+    # warmup
     fn()
+    # step 1 - we estimate the amount of time the kernel call takes
+    # NOTE: this estimate isn't super accurate because the GPU isn't warmed up at this point
+    #       but it is probably good enough
     if grad_to_none is not None:
         for x in grad_to_none:
             x.detach_()
@@ -43,46 +46,39 @@ def do_bench_cudagraph(fn, rep=20, grad_to_none=None):
     with torch.cuda.graph(g):
         fn()
     torch.cuda.synchronize()
-    fn = lambda: g.replay()
-    # Estimate the runtime of the function
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
     start_event.record()
-    fn()
+    g.replay()
     end_event.record()
     torch.cuda.synchronize()
     estimate_ms = start_event.elapsed_time(end_event)
-    # compute number of repetition to last `rep` ms
     n_repeat = max(1, int(rep / estimate_ms))
-    # compute number of repetition to last `rep` ms
-    start_event = [torch.cuda.Event(enable_timing=True) for i in range(n_repeat)]
-    end_event = [torch.cuda.Event(enable_timing=True) for i in range(n_repeat)]
-    ret = []
-    n_retries = 50
-    for _ in range(n_retries):
-        # Benchmark
-        torch.cuda.synchronize()
+    # step 2 - construct a cuda graph with `n_repeat` unrolled function calls to minimize
+    # host overhead
+    g = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(g):
         for i in range(n_repeat):
-            # we don't want `fn` to accumulate gradient values
-            # if it contains a backward pass. So we clear the
-            # provided gradients
             if grad_to_none is not None:
                 for x in grad_to_none:
                     x.grad = None
-            # record time of `fn`
-            start_event[i].record()
             fn()
-            end_event[i].record()
+    torch.cuda.synchronize()
+    # measure time and return
+    ret = []
+    n_retries = 10
+    for i in range(n_retries):
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record()
+        g.replay()
+        end_event.record()
         torch.cuda.synchronize()
-        times = torch.tensor([s.elapsed_time(e) for s, e in zip(start_event, end_event)])
-        ret.append(torch.min(times))
+        ret += [start_event.elapsed_time(end_event) / n_repeat]
     return torch.mean(torch.tensor(ret)).item()
 
 
-def do_bench(fn, warmup=25, rep=100, grad_to_none=None,
-             quantiles=None,
-             fast_flush=True,
-             return_mode="mean"):
+def do_bench(fn, warmup=25, rep=100, grad_to_none=None, quantiles=None, fast_flush=True, return_mode="mean"):
     assert return_mode in ["min", "max", "mean", "median"]
     import torch
     """
@@ -262,11 +258,12 @@ class Benchmark:
 
 
 class Mark:
+
     def __init__(self, fn, benchmarks):
         self.fn = fn
         self.benchmarks = benchmarks
 
-    def _run(self, bench: Benchmark, save_path: str, show_plots: bool, print_data: bool, **kwrags):
+    def _run(self, bench: Benchmark, save_path: str, show_plots: bool, print_data: bool, diff_col=False, **kwrags):
         import os
 
         import matplotlib.pyplot as plt
@@ -322,24 +319,36 @@ class Mark:
             if save_path:
                 plt.savefig(os.path.join(save_path, f"{bench.plot_name}.png"))
         df = df[x_names + bench.line_names]
+        if diff_col and df.shape[1] == 2:
+            col0, col1 = df.columns.tolist()
+            df['Diff'] = df[col1] - df[col0]
+
         if print_data:
             print(bench.plot_name + ':')
             print(df)
         if save_path:
             df.to_csv(os.path.join(save_path, f"{bench.plot_name}.csv"), float_format='%.1f', index=False)
+        return df
 
-    def run(self, show_plots=False, print_data=False, save_path='', **kwargs):
+    def run(self, show_plots=False, print_data=False, save_path='', return_df=False, **kwargs):
         has_single_bench = isinstance(self.benchmarks, Benchmark)
         benchmarks = [self.benchmarks] if has_single_bench else self.benchmarks
+        result_dfs = []
         if save_path:
             html = open(os.path.join(save_path, "results.html"), "w")
             html.write("<html><body>\n")
         for bench in benchmarks:
-            self._run(bench, save_path, show_plots, print_data, **kwargs)
+            result_dfs.append(self._run(bench, save_path, show_plots, print_data, **kwargs))
             if save_path:
                 html.write(f"<image src=\"{bench.plot_name}.png\"/>\n")
         if save_path:
             html.write("</body></html>\n")
+        if return_df:
+            if has_single_bench:
+                return result_dfs[0]
+            else:
+                return result_dfs
+        return None
 
 
 def perf_report(benchmarks):
@@ -394,12 +403,15 @@ def get_max_tensorcore_tflops(dtype, clock_rate, backend=None, device=None):
     tflops = num_subcores * clock_rate * ops_per_sub_core * 1e-9
     return tflops
 
+
 # create decorator that wraps test function into
 # a cuda-memcheck system call
 
 
 def cuda_memcheck(**target_kwargs):
+
     def decorator(test_fn):
+
         @functools.wraps(test_fn)
         def wrapper(*args, **kwargs):
             import psutil
@@ -417,7 +429,9 @@ def cuda_memcheck(**target_kwargs):
                 assert "ERROR SUMMARY: 0 errors" in str(out.stdout)
             else:
                 test_fn(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -425,22 +439,18 @@ def cuda_memcheck(**target_kwargs):
 def set_gpu_clock(ref_sm_clock=1350, ref_mem_clock=1215):
     try:
         subprocess.check_output(["nvidia-smi", "-i", "0", "-pm", "1"])
-        subprocess.check_output(
-            [
-                "nvidia-smi",
-                "-i",
-                "0",
-                f"--lock-gpu-clocks={ref_sm_clock},{ref_sm_clock}",
-            ]
-        )
-        subprocess.check_output(
-            [
-                "nvidia-smi",
-                "-i",
-                "0",
-                f"--lock-memory-clocks={ref_mem_clock},{ref_mem_clock}",
-            ]
-        )
+        subprocess.check_output([
+            "nvidia-smi",
+            "-i",
+            "0",
+            f"--lock-gpu-clocks={ref_sm_clock},{ref_sm_clock}",
+        ])
+        subprocess.check_output([
+            "nvidia-smi",
+            "-i",
+            "0",
+            f"--lock-memory-clocks={ref_mem_clock},{ref_mem_clock}",
+        ])
         cur_sm_clock = nvsmi(["clocks.current.sm"])[0]
         cur_mem_clock = nvsmi(["clocks.current.memory"])[0]
         assert abs(cur_sm_clock - ref_sm_clock) < 10, f"GPU SMs must run at {ref_sm_clock} MHz"

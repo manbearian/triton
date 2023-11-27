@@ -1,0 +1,195 @@
+name: Backend Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      msowner:
+        required: true
+        default: ianb@microsoft.com      
+      amdowner:
+        required: true
+        default: amd@example.com
+      intelowner:
+        required: true
+        default: yudong.si@intel.com,jian.hui.li@intel.com
+  push:
+    branches: [main]
+
+jobs:
+  Runner-Preparation:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix-optional: ${{ steps.set-matrix.outputs.matrix-optional }}
+    steps:
+      - name: Prepare runner matrix
+        id: set-matrix
+        run: |
+          if [ x"${{ github.repository }}" == x"openai/triton" ]; then
+            echo '::set-output name=matrix-optional::[["self-hosted", "gfx908"], ["self-hosted", "arc770"]]'
+          else
+            echo '::set-output name=matrix-optional::["ubuntu-latest"]'
+          fi
+
+
+  Integration-Tests-Shared-Middle-Layer:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Clear cache
+        run: |
+          rm -rf ~/.triton
+
+      - name: Update PATH
+        run: |
+          echo "PATH=${HOME}/.local/bin:${PATH}" >> "${GITHUB_ENV}"
+
+      - name: force failure
+        run: |
+          exit 4
+
+  Integration-Tests-AMD:
+    needs: Runner-Preparation
+    if: false
+
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      matrix:
+        runner: ${{fromJson(needs.Runner-Preparation.outputs.matrix-optional)}}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set ROCM ENV
+        if: ${{(matrix.runner[0] == 'self-hosted') && (matrix.runner[1] == 'gfx908')}}
+        run: |
+          echo "BACKEND=ROCM" >> "${GITHUB_ENV}"
+
+      - name: Clear cache
+        run: |
+          rm -rf ~/.triton
+
+      - name: Update PATH
+        run: |
+          echo "PATH=${HOME}/.local/bin:${PATH}" >> "${GITHUB_ENV}"
+
+      - name: Check pre-commit
+        if: ${{ matrix.runner != 'macos-10.15' && (matrix.runner[1] != 'arc770') }}
+        run: |
+          python3 -m pip install --upgrade pre-commit
+          python3 -m pre_commit run --all-files --verbose
+
+      - name: Install Triton on ROCM
+        if: ${{ env.BACKEND == 'ROCM'}}
+        run: |
+          git submodule update --init --recursive
+          cd python
+          python3 -m pip install --upgrade pip
+          python3 -m pip install cmake==3.24
+          python3 -m pip install torch==1.13.1 --index-url https://download.pytorch.org/whl/rocm5.2
+          export TRITON_CODEGEN_AMD_HIP_BACKEND=1
+          python3 -m pip install --no-build-isolation -vvv '.[tests]'
+
+
+      - name: Run python tests on ROCM
+        if: ${{ env.BACKEND == 'ROCM'}}
+        run: |
+          cd python/test/unit/language
+          python3 -m pytest --capture=tee-sys -rfs --verbose "test_core.py"
+
+  Integration-Tests-Intel:
+    needs: Runner-Preparation
+    if: false
+
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      matrix:
+        runner: ${{fromJson(needs.Runner-Preparation.outputs.matrix-optional)}}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set XPU ENV
+        if: ${{(matrix.runner[0] == 'self-hosted') && (matrix.runner[1] == 'arc770')}}
+        run: |
+          echo "BACKEND=XPU" >> "${GITHUB_ENV}"
+
+      - name: Clear cache
+        run: |
+          rm -rf ~/.triton
+
+      - name: Update PATH
+        run: |
+          echo "PATH=${HOME}/.local/bin:${PATH}" >> "${GITHUB_ENV}"
+
+      - name: Check pre-commit arc770
+        if: ${{ matrix.runner != 'macos-10.15' && (matrix.runner[1] == 'arc770') }}
+        run: |
+          source ${HOME}/triton_vars.sh
+          source ${HOME}/miniconda3/bin/activate
+          conda activate triton-xpu-ci
+          python3 -m pip install --upgrade pre-commit
+          python3 -m pre_commit run --all-files
+
+      - name: Install Triton on XPU
+        if: ${{ env.BACKEND == 'XPU'}}
+        run: |
+          source ${HOME}/triton_vars.sh
+          source ${HOME}/miniconda3/bin/activate
+          conda activate triton-xpu-ci
+          git submodule update --init --recursive
+          cd python
+          python3 -m pip install --upgrade pip
+          python3 -m pip install cmake==3.24
+          export TRITON_CODEGEN_INTEL_XPU_BACKEND=1
+          python3 -m pip uninstall -y triton
+          python3 setup.py build
+          python3 -m pip install --no-build-isolation -vvv '.[tests]'
+
+      - name: Run python tests on XPU
+        if: ${{ env.BACKEND == 'XPU'}}
+        run: |
+          source ${HOME}/triton_vars.sh
+          source ${HOME}/miniconda3/bin/activate
+          conda activate triton-xpu-ci
+          cd python/test/backend/third_party_backends
+          python3 -m pytest --capture=tee-sys -rfs --verbose --backend xpu
+
+  Check-Backends-Tests-And-Notify:
+    runs-on: ubuntu-latest
+    needs: [Integration-Tests-Shared-Middle-Layer, Integration-Tests-AMD, Integration-Tests-Intel]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4    
+      - name: Integration-Tests-Shared-Middle-Layer-Notify
+        if: ${{ needs.Integration-Tests-Shared-Middle-Layer.result != '' && needs.Integration-Tests-Shared-Middle-Layer.result == 'failure' }}        
+        uses: ./.github/actions/sent-mail
+        with:
+          jobname: Integration-Tests-Shared-Middle-Layer
+          jobowner: ${{ inputs.msowner }}
+          ghrepo: ${{ github.repository }}
+          ghrunid: ${{ github.run_id }}   
+      - name: Integration-Tests-AMD-Notify
+        if: ${{ needs.Integration-Tests-AMD.result != '' && needs.Integration-Tests-AMD.result == 'failure' }}        
+        uses: ./.github/actions/sent-mail
+        with:
+          jobname: Integration-Tests-AMD
+          jobowner: ${{ inputs.amdowner }}
+          ghrepo: ${{ github.repository }}
+          ghrunid: ${{ github.run_id }}
+      - name: Integration-Tests-Intel-Notify
+        if: ${{ needs.Integration-Tests-Intel.result != '' && needs.Integration-Tests-Intel.result == 'failure' }}        
+        uses: ./.github/actions/sent-mail
+        with:
+          jobname: Integration-Tests-Intel
+          jobowner: ${{ inputs.intelowner }}
+          ghrepo: ${{ github.repository }}
+          ghrunid: ${{ github.run_id }}
+

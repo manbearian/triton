@@ -50,7 +50,7 @@ unsigned getTotalElemsPerThread(Attribute layout, ArrayRef<int64_t> shape,
   } else if (auto dotLayout = layout.dyn_cast<DotOperandEncodingAttr>()) {
     return dotLayout.getTotalElemsPerThread(shape, eltTy);
   } else {
-    assert(0 && "getElemsPerThread not implemented");
+    llvm::report_fatal_error("getElemsPerThread not implemented");
     return 0;
   }
 }
@@ -64,7 +64,7 @@ SmallVector<unsigned> getElemsPerThread(Attribute layout,
   } else if (auto mmaLayout = layout.dyn_cast<MmaEncodingAttr>()) {
     return mmaLayout.getElemsPerThread(shape, eltTy);
   } else {
-    assert(0 && "getElemsPerThread not implemented");
+    llvm::report_fatal_error("getElemsPerThread not implemented");
     return SmallVector<unsigned>();
   }
 }
@@ -109,7 +109,7 @@ SmallVector<unsigned> getThreadsPerWarp(Attribute layout) {
       threadsPerWarp[i] *= parentThreadsPerWarp[sliceLayout.getDim()];
     return threadsPerWarp;
   }
-  assert(0 && "getThreadsPerWarp not implemented");
+  llvm::report_fatal_error("getThreadsPerWarp not implemented");
   return {};
 }
 
@@ -147,15 +147,17 @@ SmallVector<unsigned> getWarpsPerCTA(Attribute layout) {
   if (auto sliceLayout = layout.dyn_cast<SliceEncodingAttr>()) {
     auto parent = sliceLayout.getParent();
     auto parentWarpsPerCTA = getWarpsPerCTA(parent);
-    assert(parentWarpsPerCTA.size() == 2 &&
-           "getWarpsPerCTA only implemented for 2D slice layout");
+    assert(parentWarpsPerCTA.size() == 2 ||
+           parentWarpsPerCTA[sliceLayout.getDim()] == 1 &&
+               "getWarpsPerCTA only implemented for 2D slice layout or the "
+               "slice dim must have 1 warp in the parent layout");
     SmallVector<unsigned> warpsPerCTA = parentWarpsPerCTA;
     warpsPerCTA.erase(warpsPerCTA.begin() + sliceLayout.getDim());
     for (unsigned i = 0; i < warpsPerCTA.size(); i++)
       warpsPerCTA[i] *= parentWarpsPerCTA[sliceLayout.getDim()];
     return warpsPerCTA;
   }
-  assert(0 && "getWarpsPerCTA not implemented");
+  llvm::report_fatal_error("getWarpsPerCTA not implemented");
   return {};
 }
 
@@ -215,16 +217,17 @@ SmallVector<unsigned> getSizePerThread(Attribute layout) {
       } else if (opIdx == 1) {
         return {4, 1};
       } else {
-        assert(0 && "DotOperandEncodingAttr opIdx must be 0 or 1");
+        llvm::report_fatal_error("DotOperandEncodingAttr opIdx must be 0 or 1");
         return {};
       }
     } else {
-      assert(0 && "DotOperandEncodingAttr non-MmaEncodingAttr parent not "
-                  "supported yet");
+      llvm::report_fatal_error(
+          "DotOperandEncodingAttr non-MmaEncodingAttr parent not "
+          "supported yet");
       return {};
     }
   } else {
-    assert(0 && "getSizePerThread not implemented");
+    llvm::report_fatal_error("getSizePerThread not implemented");
     return {};
   }
 }
@@ -276,9 +279,9 @@ SmallVector<unsigned> getThreadsPerCTA(Attribute layout) {
       threads = {8 * mmaLayout.getWarpsPerCTA()[0],
                  4 * mmaLayout.getWarpsPerCTA()[1]};
     } else
-      assert(0 && "Unimplemented usage of MmaEncodingAttr");
+      llvm::report_fatal_error("Unimplemented usage of MmaEncodingAttr");
   } else {
-    assert(0 && "Unimplemented usage of getThreadsPerCTA");
+    llvm::report_fatal_error("Unimplemented usage of getThreadsPerCTA");
   }
 
   return threads;
@@ -312,7 +315,7 @@ SmallVector<unsigned> getShapePerCTATile(Attribute layout,
       return {16 * mmaLayout.getWarpsPerCTA()[0],
               instrShape[1] * mmaLayout.getWarpsPerCTA()[1]};
     }
-    assert(0 && "Unexpected MMA layout version found");
+    llvm::report_fatal_error("Unexpected MMA layout version found");
   } else if (auto dotLayout = layout.dyn_cast<DotOperandEncodingAttr>()) {
     auto parentLayout = dotLayout.getParent();
     assert(parentLayout && "DotOperandEncodingAttr must have a parent");
@@ -327,16 +330,21 @@ SmallVector<unsigned> getShapePerCTATile(Attribute layout,
       } else if (opIdx == 1) {
         return {16, parentShapePerCTATile[1]};
       } else {
-        assert(0 && "DotOperandEncodingAttr opIdx must be 0 or 1");
+        llvm::report_fatal_error("DotOperandEncodingAttr opIdx must be 0 or 1");
       }
     } else {
-      assert(0 && "DotOperandEncodingAttr non-MmaEncodingAttr parent not "
-                  "supported yet");
+      llvm::report_fatal_error(
+          "DotOperandEncodingAttr non-MmaEncodingAttr parent not "
+          "supported yet");
     }
   } else {
-    assert(0 && "Unimplemented usage of getShapePerCTATile");
+    llvm::report_fatal_error("Unimplemented usage of getShapePerCTATile");
   }
   return shape;
+}
+
+bool isExpensiveView(Type srcType, Type dstType) {
+  return getTotalElemsPerThread(srcType) != getTotalElemsPerThread(dstType);
 }
 
 namespace {
@@ -385,7 +393,7 @@ SmallVector<unsigned> getOrder(Attribute layout) {
     return SmallVector<unsigned>(sharedLayout.getOrder().begin(),
                                  sharedLayout.getOrder().end());
   } else {
-    assert(0 && "Unimplemented usage of getOrder");
+    llvm::report_fatal_error("Unimplemented usage of getOrder");
   }
   return {};
 };
@@ -406,7 +414,7 @@ CTALayoutAttr getCTALayout(Attribute layout) {
   else if (auto sharedLayout = layout.dyn_cast<SharedEncodingAttr>())
     return sharedLayout.getCTALayout();
   else
-    assert(0 && "Unimplemented usage of getCTALayout");
+    llvm::report_fatal_error("Unimplemented usage of getCTALayout");
   return {};
 }
 
@@ -434,7 +442,8 @@ SmallVector<unsigned> getCTAsPerCGA(Attribute layout) {
      * in the branch where layout is an instance of SliceEncodingAttr. This is
      * inconvenient but safe.
      */
-    assert(0 && "getCTAsPerCGA for SliceEncodingAttr is not well-defined");
+    llvm::report_fatal_error(
+        "getCTAsPerCGA for SliceEncodingAttr is not well-defined");
   } else if (auto mmaLayout = layout.dyn_cast<MmaEncodingAttr>())
     ref = mmaLayout.getCTALayout().getCTAsPerCGA();
   else if (auto dotLayout = layout.dyn_cast<DotOperandEncodingAttr>())
@@ -442,7 +451,7 @@ SmallVector<unsigned> getCTAsPerCGA(Attribute layout) {
   else if (auto sharedLayout = layout.dyn_cast<SharedEncodingAttr>())
     ref = sharedLayout.getCTALayout().getCTAsPerCGA();
   else
-    assert(0 && "Unimplemented usage of getCTAsPerCGA");
+    llvm::report_fatal_error("Unimplemented usage of getCTAsPerCGA");
   return SmallVector<unsigned>(ref.begin(), ref.end());
 }
 
@@ -488,7 +497,7 @@ SmallVector<unsigned> getCTAOrder(Attribute layout) {
   } else if (auto sharedLayout = layout.dyn_cast<SharedEncodingAttr>()) {
     ref = sharedLayout.getCTALayout().getCTAOrder();
   } else {
-    assert(0 && "Unimplemented usage of getCTAOrder");
+    llvm::report_fatal_error("Unimplemented usage of getCTAOrder");
   }
   return SmallVector<unsigned>(ref.begin(), ref.end());
 }
@@ -537,9 +546,9 @@ unsigned getNumWarpsPerCTA(Attribute layout) {
   else if (auto dotLayout = layout.dyn_cast<DotOperandEncodingAttr>())
     return getNumWarpsPerCTA(dotLayout.getParent());
   else if (auto sharedLayout = layout.dyn_cast<SharedEncodingAttr>())
-    assert(0 && "Cannot get numWarps from SharedEncodingAttr");
+    llvm::report_fatal_error("Cannot get numWarps from SharedEncodingAttr");
   else
-    assert(0 && "Unimplemented usage of getNumWarpsPerCTA");
+    llvm::report_fatal_error("Unimplemented usage of getNumWarpsPerCTA");
   return product<unsigned>(warpsPerCTA);
 }
 
@@ -556,7 +565,7 @@ unsigned getNumCTAs(Attribute layout) {
   else if (auto sharedLayout = layout.dyn_cast<SharedEncodingAttr>())
     CTAsPerCGA = sharedLayout.getCTALayout().getCTAsPerCGA();
   else
-    assert(0 && "Unimplemented usage of getNumCTAs");
+    llvm::report_fatal_error("Unimplemented usage of getNumCTAs");
   return product<unsigned>(CTAsPerCGA);
 }
 
@@ -853,6 +862,11 @@ unsigned DotOperandEncodingAttr::getTotalElemsPerThread(ArrayRef<int64_t> shape,
   if (auto mmaParent = getParent().dyn_cast<MmaEncodingAttr>()) {
     int warpsPerCTAM = mmaParent.getWarpsPerCTA()[0];
     int warpsPerCTAN = mmaParent.getWarpsPerCTA()[1];
+    // H100
+    if (mmaParent.isHopper()) {
+      if (eltTy.isF16())
+        return mmaParent.getTotalElemsPerThread(shape, eltTy);
+    }
     // A100
     if (mmaParent.isAmpere()) {
       auto rep = getMMAv2Rep(shapePerCTA, eltTy.getIntOrFloatBitWidth());
@@ -1355,7 +1369,7 @@ ParseResult parseInsertSliceOp(OpAsmParser &parser, OperationState &result) {
                              result.operands))
     return failure();
 
-  // Deduce operand_segment_sizes from the number of the operands.
+  // Deduce operandSegmentSizes from the number of the operands.
   auto operandSegmentSizesAttrName =
       OpT::getOperandSegmentSizesAttrName(result.name);
   result.addAttribute(
@@ -1368,7 +1382,7 @@ template <class OpT>
 void printInsertSliceOp(OpAsmPrinter &printer, OpT insertSliceOp) {
   printer << " ";
   printer << insertSliceOp.getOperation()->getOperands();
-  // "operand_segment_sizes" can be deduced, so we don't print it.
+  // "operandSegmentSizes" can be deduced, so we don't print it.
   printer.printOptionalAttrDict(
       insertSliceOp->getAttrs(),
       {insertSliceOp.getOperandSegmentSizesAttrName()});
@@ -1472,10 +1486,13 @@ struct TritonGPUInferLayoutInterface
                      std::optional<Location> location) const override {
     auto mmaRetEncoding = retEncoding.dyn_cast<MmaEncodingAttr>();
     if (mmaRetEncoding && mmaRetEncoding.isHopper()) {
-      // TODO: support gmma when A/B does not reside in shared memory
-      if (!operandEncoding.isa<SharedEncodingAttr>())
+      auto dotOpEnc = operandEncoding.dyn_cast<DotOperandEncodingAttr>();
+      if (!operandEncoding.isa<SharedEncodingAttr>() &&
+          !(opIdx == 0 && dotOpEnc && dotOpEnc.getOpIdx() == 0 &&
+            dotOpEnc.getParent().isa<MmaEncodingAttr>())) {
         return emitOptionalError(
             location, "unexpected operand layout for MmaEncodingAttr v3");
+      }
     } else if (auto dotOpEnc =
                    operandEncoding.dyn_cast<DotOperandEncodingAttr>()) {
       if (opIdx != dotOpEnc.getOpIdx())
@@ -1497,6 +1514,10 @@ struct TritonGPUInferLayoutInterface
         operandEncodingB.dyn_cast<triton::gpu::DotOperandEncodingAttr>();
     if (!aEncoding && !bEncoding)
       return mlir::success();
+    auto mmaAEncoding =
+        aEncoding.getParent().dyn_cast_or_null<MmaEncodingAttr>();
+    if (mmaAEncoding && mmaAEncoding.isHopper())
+      return success();
     // Verify that the encodings are valid.
     if (!aEncoding || !bEncoding)
       return op->emitError("mismatching encoding between A and B operands");
@@ -1521,13 +1542,15 @@ struct CanonicalizeConvertFromView
     Operation *arg = op->getOperand(0).getDefiningOp();
     if (!arg)
       return mlir::failure();
+    auto convert = dyn_cast<ConvertLayoutOp>(arg);
+    if (!convert)
+      return failure();
+    if (isExpensiveView(convert.getOperand().getType(), op.getType()))
+      return failure();
     // view(convert) -> view
-    if (auto convert = dyn_cast<ConvertLayoutOp>(arg)) {
-      rewriter.replaceOpWithNewOp<triton::ViewOp>(
-          op, op->getResult(0).getType(), convert.getOperand());
-      return mlir::success();
-    }
-    return mlir::failure();
+    rewriter.replaceOpWithNewOp<triton::ViewOp>(op, op->getResult(0).getType(),
+                                                convert.getOperand());
+    return mlir::success();
   }
 };
 
@@ -1572,6 +1595,8 @@ struct CanonicalizeConvertFromConvert
       return mlir::failure();
     // cvt(view) -> view
     if (auto view = dyn_cast<triton::ViewOp>(arg)) {
+      if (isExpensiveView(view.getOperand().getType(), op.getType()))
+        return failure();
       rewriter.replaceOpWithNewOp<triton::ViewOp>(
           op, op->getResult(0).getType(), view.getResult());
       return mlir::success();

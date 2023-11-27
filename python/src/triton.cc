@@ -228,6 +228,12 @@ void init_triton_ir(py::module &&m) {
       .value("RELAXED", mlir::triton::MemSemantic::RELAXED)
       .export_values();
 
+  py::enum_<mlir::triton::MemSyncScope>(m, "MEM_SYNC_SCOPE", py::module_local())
+      .value("GPU", mlir::triton::MemSyncScope::GPU)
+      .value("CTA", mlir::triton::MemSyncScope::CTA)
+      .value("SYSTEM", mlir::triton::MemSyncScope::SYSTEM)
+      .export_values();
+
   py::enum_<mlir::triton::EvictionPolicy>(m, "EVICTION_POLICY",
                                           py::module_local())
       .value("NORMAL", mlir::triton::EvictionPolicy::NORMAL)
@@ -1127,7 +1133,7 @@ void init_triton_ir(py::module &&m) {
       .def("create_minf",
            [](TritonOpBuilder &self, mlir::Value &lhs,
               mlir::Value &rhs) -> mlir::Value {
-             return mlir::Value(self.create<mlir::arith::MinFOp>(lhs, rhs));
+             return mlir::Value(self.create<mlir::arith::MinimumFOp>(lhs, rhs));
            })
       .def("create_maxsi",
            [](TritonOpBuilder &self, mlir::Value &lhs,
@@ -1142,7 +1148,7 @@ void init_triton_ir(py::module &&m) {
       .def("create_maxf",
            [](TritonOpBuilder &self, mlir::Value &lhs,
               mlir::Value &rhs) -> mlir::Value {
-             return mlir::Value(self.create<mlir::arith::MaxFOp>(lhs, rhs));
+             return mlir::Value(self.create<mlir::arith::MaximumFOp>(lhs, rhs));
            })
       // AddPtr (similar to GEP)
       .def("create_addptr",
@@ -1418,7 +1424,8 @@ void init_triton_ir(py::module &&m) {
       // // atomic
       .def("create_atomic_cas",
            [](TritonOpBuilder &self, mlir::Value &ptr, mlir::Value &cmp,
-              mlir::Value &val, mlir::triton::MemSemantic sem) -> mlir::Value {
+              mlir::Value &val, mlir::triton::MemSemantic sem,
+              mlir::triton::MemSyncScope scope) -> mlir::Value {
              mlir::Type dstType;
              if (auto srcTensorType =
                      ptr.getType().dyn_cast<mlir::RankedTensorType>()) {
@@ -1433,12 +1440,13 @@ void init_triton_ir(py::module &&m) {
                dstType = ptrType.getPointeeType();
              }
              return self.create<mlir::triton::AtomicCASOp>(dstType, ptr, cmp,
-                                                           val, sem);
+                                                           val, sem, scope);
            })
       .def("create_atomic_rmw",
            [](TritonOpBuilder &self, mlir::triton::RMWOp rmwOp,
               mlir::Value &ptr, mlir::Value &val, mlir::Value &mask,
-              mlir::triton::MemSemantic sem) -> mlir::Value {
+              mlir::triton::MemSemantic sem,
+              mlir::triton::MemSyncScope scope) -> mlir::Value {
              mlir::Type dstType;
              if (auto srcTensorType =
                      ptr.getType().dyn_cast<mlir::RankedTensorType>()) {
@@ -1452,8 +1460,8 @@ void init_triton_ir(py::module &&m) {
                                   .cast<mlir::triton::PointerType>();
                dstType = ptrType.getPointeeType();
              }
-             return self.create<mlir::triton::AtomicRMWOp>(dstType, rmwOp, ptr,
-                                                           val, mask, sem);
+             return self.create<mlir::triton::AtomicRMWOp>(
+                 dstType, rmwOp, ptr, val, mask, sem, scope);
            })
       // External
       .def("create_extern_elementwise",
@@ -1654,6 +1662,10 @@ void init_triton_ir(py::module &&m) {
       .def("add_tritongpu_coalesce_pass",
            [](mlir::PassManager &self) {
              self.addPass(mlir::createTritonGPUCoalescePass());
+           })
+      .def("add_tritongpu_optimize_thread_locality_pass",
+           [](mlir::PassManager &self) {
+             self.addPass(mlir::createTritonGPUOptimizeThreadLocalityPass());
            })
       .def("add_symbol_dce_pass",
            [](mlir::PassManager &self) {
@@ -1870,7 +1882,8 @@ void init_triton_translation(py::module &m) {
 
   m.def(
       "translate_llvmir_to_ptx",
-      [](const std::string llvmIR, int capability, int version) -> std::string {
+      [](const std::string llvmIR, int capability, int version,
+         bool enable_fp_fusion) -> std::string {
         py::gil_scoped_release allow_threads;
         // create LLVM module from C++
         llvm::LLVMContext context;
@@ -1885,75 +1898,77 @@ void init_triton_translation(py::module &m) {
               "lineno: " + std::to_string(error.getLineNo()));
         }
         // translate module to PTX
-        auto ptxCode =
-            triton::translateLLVMIRToPTX(*module, capability, version);
+        auto ptxCode = triton::translateLLVMIRToPTX(*module, capability,
+                                                    version, enable_fp_fusion);
         return ptxCode;
       },
       ret::take_ownership);
 
-  m.def(
-      "compile_ptx_to_cubin",
-      [](const std::string &ptxCode, const std::string &ptxasPath,
-         int capability) -> py::object {
-        std::string cubin;
-        {
-          py::gil_scoped_release allow_threads;
+  m.def("compile_ptx_to_cubin",
+        [](const std::string &ptxCode, const std::string &ptxasPath,
+           int capability, bool enable_fp_fusion) -> py::object {
+          std::string cubin;
+          {
+            py::gil_scoped_release allow_threads;
 
-          // compile ptx with ptxas
-          llvm::SmallString<64> fsrc;
-          llvm::SmallString<64> flog;
-          llvm::sys::fs::createTemporaryFile("compile-ptx-src", "", fsrc);
-          llvm::sys::fs::createTemporaryFile("compile-ptx-log", "", flog);
-          std::string fbin = std::string(fsrc) + ".o";
-          llvm::FileRemover logRemover(flog);
-          llvm::FileRemover binRemover(fbin);
-          const char *_fsrc = fsrc.c_str();
-          const char *_flog = flog.c_str();
-          const char *_fbin = fbin.c_str();
-          std::ofstream ofs(_fsrc);
-          ofs << ptxCode << std::endl;
-          ofs.close();
+            // compile ptx with ptxas
+            llvm::SmallString<64> fsrc;
+            llvm::SmallString<64> flog;
+            llvm::sys::fs::createTemporaryFile("compile-ptx-src", "", fsrc);
+            llvm::sys::fs::createTemporaryFile("compile-ptx-log", "", flog);
+            std::string fbin = std::string(fsrc) + ".o";
+            llvm::FileRemover logRemover(flog);
+            llvm::FileRemover binRemover(fbin);
+            const char *_fsrc = fsrc.c_str();
+            const char *_flog = flog.c_str();
+            const char *_fbin = fbin.c_str();
+            std::ofstream ofs(_fsrc);
+            ofs << ptxCode << std::endl;
+            ofs.close();
 
-          auto lineInfoOption =
-              triton::tools::getBoolEnv("TRITON_DISABLE_LINE_INFO")
-                  ? ""
-                  : " -lineinfo";
-          auto capabilitySuffix = (capability == 90) ? "a " : " ";
-          auto outputFileName = std::string(_fsrc) + ".o";
-          auto logRedirect = " 2> " + std::string(_flog);
-          std::string cmd = ptxasPath + lineInfoOption + " -v --gpu-name=sm_" +
-                            std::to_string(capability) + capabilitySuffix +
-                            _fsrc + " -o " + outputFileName + logRedirect;
+            auto lineInfoOption =
+                triton::tools::getBoolEnv("TRITON_DISABLE_LINE_INFO")
+                    ? ""
+                    : " -lineinfo";
+            auto fmadOption = enable_fp_fusion ? "" : " --fmad=false";
+            auto capabilitySuffix = (capability == 90) ? "a " : " ";
+            auto outputFileName = std::string(_fsrc) + ".o";
+            auto logRedirect = " 2> " + std::string(_flog);
+            std::string cmd = ptxasPath + lineInfoOption + fmadOption +
+                              " -v --gpu-name=sm_" +
+                              std::to_string(capability) + capabilitySuffix +
+                              _fsrc + " -o " + outputFileName + logRedirect;
 
-          int err = system(cmd.c_str());
-          if (err != 0) {
-            err >>= 8;
-            std::ifstream _log(_flog);
-            std::string log(std::istreambuf_iterator<char>(_log), {});
-            if (err == 255) {
-              throw std::runtime_error("Internal Triton PTX codegen error: \n" +
-                                       log);
-            } else if (err == 128 + SIGSEGV) {
-              throw std::runtime_error("Please run `ptxas " + fsrc.str().str() +
-                                       "` to confirm that this is a "
-                                       "bug in `ptxas`\n" +
-                                       log);
+            int err = system(cmd.c_str());
+            if (err != 0) {
+              err >>= 8;
+              std::ifstream _log(_flog);
+              std::string log(std::istreambuf_iterator<char>(_log), {});
+              if (err == 255) {
+                throw std::runtime_error(
+                    "Internal Triton PTX codegen error: \n" + log);
+              } else if (err == 128 + SIGSEGV) {
+                throw std::runtime_error("Please run `ptxas " +
+                                         fsrc.str().str() +
+                                         "` to confirm that this is a "
+                                         "bug in `ptxas`\n" +
+                                         log);
+              } else {
+                throw std::runtime_error("`ptxas` failed with error code " +
+                                         std::to_string(err) + ": \n" + log);
+              }
+              return {};
             } else {
-              throw std::runtime_error("`ptxas` failed with error code " +
-                                       std::to_string(err) + ": \n" + log);
+              llvm::FileRemover srcRemover(fsrc);
+              std::ifstream _cubin(_fbin, std::ios::binary);
+              cubin = std::string(std::istreambuf_iterator<char>(_cubin), {});
+              _cubin.close();
+              // Do not return here, exit the gil scope and return below
             }
-            return {};
-          } else {
-            llvm::FileRemover srcRemover(fsrc);
-            std::ifstream _cubin(_fbin, std::ios::binary);
-            cubin = std::string(std::istreambuf_iterator<char>(_cubin), {});
-            _cubin.close();
-            // Do not return here, exit the gil scope and return below
           }
-        }
-        py::bytes bytes(cubin);
-        return std::move(bytes);
-      });
+          py::bytes bytes(cubin);
+          return std::move(bytes);
+        });
 
   m.def("add_external_libs",
         [](mlir::ModuleOp &op, const std::vector<std::string> &names,
